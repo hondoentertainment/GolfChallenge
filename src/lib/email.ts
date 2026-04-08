@@ -2,7 +2,7 @@ import { Resend } from 'resend';
 
 const resend = process.env.RESEND_API_KEY ? new Resend(process.env.RESEND_API_KEY) : null;
 const FROM_EMAIL = process.env.FROM_EMAIL || 'Golf Challenge <noreply@golf-challenge.com>';
-const APP_URL = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000';
+const APP_URL = process.env.NEXT_PUBLIC_APP_URL || 'https://golf-challenge.vercel.app';
 
 export async function sendPasswordResetEmail(to: string, token: string): Promise<boolean> {
   const resetUrl = `${APP_URL}/reset-password?token=${token}`;

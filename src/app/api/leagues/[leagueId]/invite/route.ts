@@ -21,7 +21,7 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ leag
       const league = await getLeague(leagueId);
       if (!league) return NextResponse.json({ error: 'Not found' }, { status: 404 });
 
-      const appUrl = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000';
+      const appUrl = process.env.NEXT_PUBLIC_APP_URL || 'https://golf-challenge.vercel.app';
       const inviteUrl = `${appUrl}/leagues/${leagueId}/invite?code=${league.invite_code}`;
 
       return NextResponse.json({ inviteUrl, inviteCode: league.invite_code, leagueName: league.name });
