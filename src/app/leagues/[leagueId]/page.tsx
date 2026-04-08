@@ -6,6 +6,7 @@ import Link from "next/link";
 import { useCountdown } from "@/hooks/useCountdown";
 import { useDarkMode } from "@/hooks/useDarkMode";
 import { buildChartData, getChartPath } from "@/hooks/useEarningsChart";
+import { usePushNotifications } from "@/hooks/usePushNotifications";
 import { getGolferPhotoUrl, getGolferInitials } from "@/lib/golfer-photos";
 
 interface User { id: string; username: string; is_admin?: boolean; }
@@ -53,6 +54,18 @@ export default function LeaguePage() {
   const [loading, setLoading] = useState(true);
   const [golferSearch, setGolferSearch] = useState("");
   const [copiedCode, setCopiedCode] = useState(false);
+
+  // Field filtering, push notifications, golfer form, invite link
+  const [fieldGolferIds, setFieldGolferIds] = useState<string[]>([]);
+  const [showFieldOnly, setShowFieldOnly] = useState(false);
+  const [golferForm, setGolferForm] = useState<{ name: string; stats: { totalEarnings: number; avgEarnings: number; top10s: number; events: number }; recentResults: { tournament_name: string; position: string; prize_money: number }[] } | null>(null);
+  const [golferFormLoading, setGolferFormLoading] = useState(false);
+  const [inviteUrl, setInviteUrl] = useState("");
+  const [copiedInvite, setCopiedInvite] = useState(false);
+  const { permission: pushPerm, supported: pushSupported, requestPermission, sendLocalNotification } = usePushNotifications();
+
+  // Weekly earnings per user for sparklines
+  const [weeklyEarnings, setWeeklyEarnings] = useState<Record<string, number[]>>({});
 
   // Chat state
   const [chatMessages, setChatMessages] = useState<ChatMsg[]>([]);
@@ -104,8 +117,25 @@ export default function LeaguePage() {
         setTournaments(golferRes.tournaments || []);
         setCurrentTournament(tournamentRes.currentTournament);
         setGolfers(golferRes.golfers || []);
+        setFieldGolferIds(golferRes.fieldGolferIds || []);
         setStandings(standingsRes.standings || []);
         setAllPicks(allPicksRes.picks || []);
+
+        // Build weekly earnings for sparklines
+        const we: Record<string, number[]> = {};
+        for (const s of (standingsRes.standings || [])) {
+          const playerPicks = (allPicksRes.picks || []).filter((p: PickDetail) => p.user_id === s.userId);
+          we[s.userId] = (tournamentRes.tournaments || []).map((t: Tournament) => {
+            const pick = playerPicks.find((p: PickDetail) => p.tournament_name === t.name);
+            return pick?.prize_money || 0;
+          });
+        }
+        setWeeklyEarnings(we);
+
+        // Fetch invite URL
+        fetch(`/api/leagues/${leagueId}/invite`).then(r => r.ok ? r.json() : null).then(d => {
+          if (d?.inviteUrl) setInviteUrl(d.inviteUrl);
+        }).catch(() => {});
         const at = tournamentRes.currentTournament;
         if (at) { setSelectedTournament(at.id); await loadPickData(at.id); }
       } catch { router.push("/dashboard"); }
@@ -184,6 +214,17 @@ export default function LeaguePage() {
     const res = await fetch(`/api/leagues/${leagueId}/season`);
     if (res.ok) setSeasonData(await res.json());
   }
+  async function loadGolferForm(golferId: string) {
+    setGolferFormLoading(true);
+    try {
+      const res = await fetch(`/api/golfers/${golferId}/form`);
+      if (res.ok) setGolferForm(await res.json());
+    } catch { /* ignore */ }
+    finally { setGolferFormLoading(false); }
+  }
+  function copyInviteUrl() {
+    if (inviteUrl) { navigator.clipboard.writeText(inviteUrl); setCopiedInvite(true); setTimeout(() => setCopiedInvite(false), 2000); }
+  }
   async function commAction(action: string, extra?: Record<string, string>) {
     setCommMsg("");
     const res = await fetch(`/api/leagues/${leagueId}/commissioner`, {
@@ -197,7 +238,11 @@ export default function LeaguePage() {
   if (loading) return <div className="flex flex-1 items-center justify-center min-h-screen"><div className="text-muted">Loading league...</div></div>;
 
   const pickedGolferIds = picks.map(p => p.golfer_id);
-  const filteredGolfers = golfers.filter(g => g.name.toLowerCase().includes(golferSearch.toLowerCase()));
+  const filteredGolfers = golfers.filter(g => {
+    const matchesSearch = g.name.toLowerCase().includes(golferSearch.toLowerCase());
+    const inField = !showFieldOnly || fieldGolferIds.length === 0 || fieldGolferIds.includes(g.id);
+    return matchesSearch && inField;
+  });
   const selectedTournamentData = tournaments.find(t => t.id === selectedTournament);
 
   const tabs: { key: Tab; label: string }[] = [
@@ -236,9 +281,21 @@ export default function LeaguePage() {
               Masters &rarr; U.S. Open &middot; {members.length} player{members.length !== 1 ? "s" : ""} &mdash; {members.map(m => m.username).join(", ")}
             </p>
           </div>
-          <button onClick={copyInviteCode} className="font-mono bg-surface-alt px-3 py-1.5 rounded-lg border border-border hover:border-primary text-sm self-start">
-            {copiedCode ? "Copied!" : league?.invite_code}
-          </button>
+          <div className="flex flex-wrap gap-2 self-start">
+            <button onClick={copyInviteCode} className="font-mono bg-surface-alt px-3 py-1.5 rounded-lg border border-border hover:border-primary text-xs">
+              {copiedCode ? "Copied!" : league?.invite_code}
+            </button>
+            {inviteUrl && (
+              <button onClick={copyInviteUrl} className="bg-primary/10 text-primary px-3 py-1.5 rounded-lg border border-primary/20 hover:border-primary text-xs font-medium">
+                {copiedInvite ? "Link copied!" : "Share invite link"}
+              </button>
+            )}
+            {pushSupported && pushPerm !== "granted" && (
+              <button onClick={requestPermission} className="bg-accent/10 text-accent px-3 py-1.5 rounded-lg border border-accent/20 text-xs font-medium">
+                Enable notifications
+              </button>
+            )}
+          </div>
         </div>
 
         {/* Tabs - scrollable on mobile */}
@@ -321,8 +378,43 @@ export default function LeaguePage() {
                     </div>
                     <p className="text-xs sm:text-sm text-muted mb-4">You cannot pick the same golfer more than once.</p>
                     {pickError && <div className="bg-red-50 text-danger border border-red-200 rounded-lg p-3 text-sm mb-4">{pickError}</div>}
-                    <input type="text" value={golferSearch} onChange={e => setGolferSearch(e.target.value)} placeholder="Search golfers..."
-                      className="w-full max-w-md px-4 py-2 rounded-lg border border-border bg-background focus:outline-none focus:ring-2 focus:ring-primary mb-4 text-sm"/>
+                    <div className="flex flex-col sm:flex-row gap-2 mb-4">
+                      <input type="text" value={golferSearch} onChange={e => setGolferSearch(e.target.value)} placeholder="Search golfers..."
+                        className="flex-1 max-w-md px-4 py-2 rounded-lg border border-border bg-background focus:outline-none focus:ring-2 focus:ring-primary text-sm"/>
+                      {fieldGolferIds.length > 0 && (
+                        <label className="flex items-center gap-2 text-xs font-medium text-muted cursor-pointer select-none">
+                          <input type="checkbox" checked={showFieldOnly} onChange={e => setShowFieldOnly(e.target.checked)}
+                            className="rounded border-border"/>
+                          In field only ({fieldGolferIds.length})
+                        </label>
+                      )}
+                    </div>
+
+                    {/* Golfer form popup */}
+                    {golferForm && (
+                      <div className="bg-surface border border-border rounded-xl p-4 mb-4 relative">
+                        <button onClick={() => setGolferForm(null)} className="absolute top-2 right-3 text-muted hover:text-foreground">&times;</button>
+                        <h4 className="font-bold text-sm mb-2">{golferForm.name} - Recent Form</h4>
+                        {golferFormLoading ? <p className="text-muted text-xs">Loading...</p> : (
+                          <>
+                            <div className="flex gap-4 text-xs text-muted mb-2">
+                              <span>Avg: ${golferForm.stats.avgEarnings.toLocaleString()}</span>
+                              <span>Top 10s: {golferForm.stats.top10s}/{golferForm.stats.events}</span>
+                            </div>
+                            <div className="space-y-1">
+                              {golferForm.recentResults.map((r, i) => (
+                                <div key={i} className="flex justify-between text-xs px-2 py-1 bg-surface-alt rounded">
+                                  <span>{r.tournament_name}</span>
+                                  <span className="font-medium">{r.position} {r.prize_money > 0 && `($${r.prize_money.toLocaleString()})`}</span>
+                                </div>
+                              ))}
+                              {golferForm.recentResults.length === 0 && <p className="text-xs text-muted">No recent results</p>}
+                            </div>
+                          </>
+                        )}
+                      </div>
+                    )}
+
                     <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2 max-h-[32rem] overflow-y-auto pr-1">
                       {filteredGolfers.map(g => {
                         const taken = pickedGolferIds.includes(g.id);
@@ -330,7 +422,7 @@ export default function LeaguePage() {
                         const sel = selectedGolfer === g.id;
                         const dis = taken || used;
                         return (
-                          <button key={g.id} onClick={() => !dis && setSelectedGolfer(g.id)} disabled={dis}
+                          <button key={g.id} onClick={() => { if (!dis) setSelectedGolfer(g.id); loadGolferForm(g.id); }} disabled={dis}
                             className={`text-left px-3 sm:px-4 py-2.5 rounded-lg border transition-colors ${sel ? "border-primary bg-primary/10 ring-2 ring-primary" : dis ? "border-border bg-surface-alt opacity-40 cursor-not-allowed" : "border-border hover:border-primary hover:bg-primary/5 cursor-pointer"}`}>
                             <div className="flex items-center gap-2.5">
                               {(() => { const photo = getGolferPhotoUrl(g.name); return photo ? (
@@ -377,17 +469,32 @@ export default function LeaguePage() {
                   <th className="text-left px-4 sm:px-6 py-3 text-xs sm:text-sm font-semibold text-muted">Rank</th>
                   <th className="text-left px-4 sm:px-6 py-3 text-xs sm:text-sm font-semibold text-muted">Player</th>
                   <th className="text-right px-4 sm:px-6 py-3 text-xs sm:text-sm font-semibold text-muted">Picks</th>
+                  <th className="px-4 sm:px-6 py-3 text-xs sm:text-sm font-semibold text-muted hidden sm:table-cell">Trend</th>
                   <th className="text-right px-4 sm:px-6 py-3 text-xs sm:text-sm font-semibold text-muted">Earnings</th>
                 </tr></thead>
                 <tbody>
-                  {standings.map((s, i) => (
+                  {standings.map((s, i) => {
+                    const we = weeklyEarnings[s.userId] || [];
+                    const maxWe = Math.max(...we, 1);
+                    return (
                     <tr key={s.userId} className={`border-b border-border last:border-0 ${s.userId === user?.id ? "bg-primary/5" : ""}`}>
                       <td className="px-4 sm:px-6 py-4"><span className={`font-bold text-lg ${i === 0 ? "text-accent" : ""}`}>{i + 1}</span></td>
                       <td className="px-4 sm:px-6 py-4 font-medium text-sm">{s.username}{s.userId === user?.id ? " (you)" : ""}</td>
                       <td className="px-4 sm:px-6 py-4 text-right text-muted text-sm">{s.pickCount}/{tournaments.length}</td>
+                      <td className="px-4 sm:px-6 py-3 hidden sm:table-cell">
+                        {we.length > 0 && (
+                          <svg viewBox="0 0 100 24" className="w-24 h-6">
+                            {we.map((v, j) => (
+                              <rect key={j} x={j * (100 / we.length)} y={24 - (v / maxWe) * 22} width={Math.max(100 / we.length - 1, 2)} height={Math.max((v / maxWe) * 22, 1)}
+                                fill={v > 0 ? "var(--accent)" : "var(--border)"} rx="1"/>
+                            ))}
+                          </svg>
+                        )}
+                      </td>
                       <td className="px-4 sm:px-6 py-4 text-right font-bold text-accent">{formatMoney(s.totalPrizeMoney)}</td>
                     </tr>
-                  ))}
+                    );
+                  })}
                 </tbody>
               </table>
             </div>

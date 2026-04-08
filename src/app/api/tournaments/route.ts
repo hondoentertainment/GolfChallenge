@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { getTournaments, getGolfers, getCurrentTournament } from '@/lib/picks';
 import { getTournamentPayouts } from '@/lib/pga-schedule';
+import { getFieldGolferIds } from '@/lib/golfer-field';
 import { ensureSeeded } from '@/lib/seed';
 
 export async function GET() {
@@ -15,7 +16,18 @@ export async function GET() {
       payouts: getTournamentPayouts(t.purse),
     }));
 
-    return NextResponse.json({ tournaments: tournamentsWithPayouts, golfers, currentTournament });
+    // Fetch field for current/upcoming tournament
+    let fieldGolferIds: string[] = [];
+    try {
+      fieldGolferIds = await getFieldGolferIds();
+    } catch { /* fallback to empty = show all */ }
+
+    return NextResponse.json({
+      tournaments: tournamentsWithPayouts,
+      golfers,
+      currentTournament,
+      fieldGolferIds, // empty array means show all (no field data available)
+    });
   } catch {
     return NextResponse.json({ error: 'Failed to fetch tournaments' }, { status: 500 });
   }
