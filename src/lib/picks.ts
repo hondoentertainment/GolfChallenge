@@ -2,6 +2,7 @@ import { query, queryOne, execute } from './db';
 import { v4 as uuidv4 } from 'uuid';
 import { getLeagueMembers } from './leagues';
 import { getPickDeadline } from './pga-schedule';
+import { logAction } from './audit';
 
 export interface Pick {
   id: string;
@@ -11,6 +12,7 @@ export interface Pick {
   golfer_id: string;
   picked_at: string;
   pick_order: number;
+  is_missed?: boolean;
 }
 
 export interface PickWithDetails extends Pick {
@@ -169,6 +171,10 @@ export async function makePick(leagueId: string, userId: string, tournamentId: s
     [id, leagueId, userId, tournamentId, golferId, pickPosition]
   );
 
+  const golfer = await queryOne<{ name: string }>('SELECT name FROM golfers WHERE id = $1', [golferId]);
+  const tournament = await queryOne<{ name: string }>('SELECT name FROM tournaments WHERE id = $1', [tournamentId]);
+  await logAction('pick_made', `Picked ${golfer?.name} for ${tournament?.name}`, leagueId, userId);
+
   return {
     id,
     league_id: leagueId,
@@ -251,4 +257,68 @@ export async function updateTournamentResult(tournamentId: string, golferId: str
 
 export async function updateTournamentStatus(tournamentId: string, status: string) {
   await execute('UPDATE tournaments SET status = $1 WHERE id = $2', [status, tournamentId]);
+}
+
+// Mark missed picks for all leagues for a given tournament
+// Called by the pick-reminders cron after final deadline passes
+export async function markMissedPicks(tournamentId: string): Promise<number> {
+  const leagues = await query<{ id: string }>('SELECT DISTINCT id FROM leagues WHERE archived = FALSE');
+  let missed = 0;
+
+  for (const league of leagues) {
+    const order = await getPickOrder(league.id, tournamentId);
+    const now = new Date();
+
+    for (const entry of order) {
+      // Skip if they already picked
+      const existingPick = await queryOne(
+        'SELECT id FROM picks WHERE league_id = $1 AND user_id = $2 AND tournament_id = $3',
+        [league.id, entry.userId, tournamentId]
+      );
+      if (existingPick) continue;
+
+      // If their deadline has passed, mark as missed
+      if (now > entry.deadline) {
+        // Use a special "missed" golfer placeholder -- insert with a null-safe pattern
+        // We insert a pick with is_missed=TRUE and a dummy golfer_id that won't match results
+        // Actually, we just need to record the miss -- no golfer_id needed
+        // Use the first available golfer as placeholder (won't earn anything without a result)
+        await execute(
+          `INSERT INTO picks (id, league_id, user_id, tournament_id, golfer_id, pick_order, is_missed)
+           VALUES ($1, $2, $3, $4, (SELECT id FROM golfers ORDER BY world_ranking DESC LIMIT 1), $5, TRUE)
+           ON CONFLICT (league_id, user_id, tournament_id) DO NOTHING`,
+          [uuidv4(), league.id, entry.userId, tournamentId, entry.position]
+        );
+        await logAction('pick_missed', `Missed deadline for tournament`, league.id, entry.userId);
+        missed++;
+      }
+    }
+  }
+
+  return missed;
+}
+
+// Get combined standings across all leagues for a user
+export async function getCombinedLeaderboard(userId: string): Promise<{ leagueId: string; leagueName: string; totalPrizeMoney: number; rank: number }[]> {
+  const leagues = await query<{ league_id: string; name: string }>(
+    `SELECT lm.league_id, l.name FROM league_members lm
+     JOIN leagues l ON lm.league_id = l.id
+     WHERE lm.user_id = $1 AND l.archived = FALSE`,
+    [userId]
+  );
+
+  const results = [];
+  for (const league of leagues) {
+    const standings = await getLeagueStandings(league.league_id);
+    const myStanding = standings.find(s => s.userId === userId);
+    const rank = standings.findIndex(s => s.userId === userId) + 1;
+    results.push({
+      leagueId: league.league_id,
+      leagueName: league.name,
+      totalPrizeMoney: myStanding?.totalPrizeMoney || 0,
+      rank,
+    });
+  }
+
+  return results;
 }

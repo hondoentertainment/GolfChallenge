@@ -6,6 +6,7 @@ import Link from "next/link";
 import { useCountdown } from "@/hooks/useCountdown";
 import { useDarkMode } from "@/hooks/useDarkMode";
 import { buildChartData, getChartPath } from "@/hooks/useEarningsChart";
+import { getGolferPhotoUrl, getGolferInitials } from "@/lib/golfer-photos";
 
 interface User { id: string; username: string; is_admin?: boolean; }
 interface League { id: string; name: string; invite_code: string; created_by: string; }
@@ -330,12 +331,21 @@ export default function LeaguePage() {
                         const dis = taken || used;
                         return (
                           <button key={g.id} onClick={() => !dis && setSelectedGolfer(g.id)} disabled={dis}
-                            className={`text-left px-3 sm:px-4 py-3 rounded-lg border transition-colors ${sel ? "border-primary bg-primary/10 ring-2 ring-primary" : dis ? "border-border bg-surface-alt opacity-40 cursor-not-allowed" : "border-border hover:border-primary hover:bg-primary/5 cursor-pointer"}`}>
-                            <div className="flex items-center justify-between">
-                              <span className="font-medium text-sm">{g.name}</span>
-                              <span className="text-xs text-muted">#{g.world_ranking}</span>
+                            className={`text-left px-3 sm:px-4 py-2.5 rounded-lg border transition-colors ${sel ? "border-primary bg-primary/10 ring-2 ring-primary" : dis ? "border-border bg-surface-alt opacity-40 cursor-not-allowed" : "border-border hover:border-primary hover:bg-primary/5 cursor-pointer"}`}>
+                            <div className="flex items-center gap-2.5">
+                              {(() => { const photo = getGolferPhotoUrl(g.name); return photo ? (
+                                <img src={photo} alt="" className="w-8 h-8 rounded-full object-cover bg-surface-alt shrink-0" onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }} />
+                              ) : (
+                                <span className="w-8 h-8 rounded-full bg-primary/10 text-primary text-xs font-bold flex items-center justify-center shrink-0">{getGolferInitials(g.name)}</span>
+                              ); })()}
+                              <div className="flex-1 min-w-0">
+                                <div className="flex items-center justify-between">
+                                  <span className="font-medium text-sm truncate">{g.name}</span>
+                                  <span className="text-xs text-muted ml-1">#{g.world_ranking}</span>
+                                </div>
+                                <div className="text-xs text-muted">{g.country}{taken && <span className="text-danger ml-1">&bull; Taken</span>}{used && !taken && <span className="text-danger ml-1">&bull; Used</span>}</div>
+                              </div>
                             </div>
-                            <div className="text-xs text-muted mt-0.5">{g.country}{taken && <span className="text-danger ml-1">&bull; Taken</span>}{used && !taken && <span className="text-danger ml-1">&bull; Used</span>}</div>
                           </button>
                         );
                       })}

@@ -4,6 +4,51 @@ import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 
+function RecapSection() {
+  const [recap, setRecap] = useState<{
+    recap: { tournament: { name: string; course: string; purse: number }; results: { golfer_name: string; position: string; prize_money: number }[] } | null;
+    upcoming: { name: string; start_date: string; course: string } | null;
+  } | null>(null);
+
+  useEffect(() => {
+    fetch("/api/public/recap")
+      .then(r => r.ok ? r.json() : null)
+      .then(setRecap)
+      .catch(() => {});
+  }, []);
+
+  if (!recap?.recap) return null;
+  const { tournament, results } = recap.recap;
+
+  return (
+    <section className="max-w-6xl mx-auto px-6 py-16">
+      <h2 className="text-3xl font-bold text-center mb-8">Last Week&apos;s Results</h2>
+      <div className="bg-surface rounded-xl p-8 border border-border">
+        <h3 className="text-xl font-bold mb-1">{tournament.name}</h3>
+        <p className="text-muted text-sm mb-4">{tournament.course}</p>
+        <div className="space-y-2">
+          {results.slice(0, 5).map((r, i) => (
+            <div key={i} className="flex items-center justify-between px-4 py-2 rounded-lg bg-surface-alt">
+              <div className="flex items-center gap-3">
+                <span className={`font-bold ${i === 0 ? "text-accent text-lg" : "text-muted"}`}>{r.position}</span>
+                <span className="font-medium">{r.golfer_name}</span>
+              </div>
+              <span className={`font-bold ${i === 0 ? "text-accent" : ""}`}>
+                {r.prize_money > 0 ? "$" + r.prize_money.toLocaleString() : ""}
+              </span>
+            </div>
+          ))}
+        </div>
+        {recap.upcoming && (
+          <div className="mt-6 pt-4 border-t border-border text-center">
+            <p className="text-sm text-muted">Up next: <strong className="text-foreground">{recap.upcoming.name}</strong> at {recap.upcoming.course}</p>
+          </div>
+        )}
+      </div>
+    </section>
+  );
+}
+
 export default function Home() {
   const router = useRouter();
   const [checking, setChecking] = useState(true);
@@ -127,6 +172,9 @@ export default function Home() {
           </div>
         </div>
       </section>
+
+      {/* Last Week Recap */}
+      <RecapSection />
 
       {/* Footer */}
       <footer className="bg-primary-dark text-green-200 py-8">

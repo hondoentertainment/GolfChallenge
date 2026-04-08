@@ -13,6 +13,12 @@ jest.mock('@/lib/pga-data', () => ({
 jest.mock('@/lib/notifications', () => ({
   notifyLeagueMembers: jest.fn(),
 }));
+jest.mock('@/lib/badges', () => ({
+  recalculateBadges: jest.fn(),
+}));
+jest.mock('@/lib/audit', () => ({
+  logAction: jest.fn(),
+}));
 jest.mock('@/lib/db', () => ({
   query: jest.fn(() => []),
 }));

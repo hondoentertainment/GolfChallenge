@@ -26,7 +26,13 @@ export async function createUser(username: string, email: string, password: stri
   } catch {
     throw new Error('Username or email already exists');
   }
-  return { id, username, email: email.toLowerCase(), is_admin: false };
+  // Auto-promote admin by ADMIN_EMAIL env var
+  const isAdmin = process.env.ADMIN_EMAIL?.toLowerCase() === email.toLowerCase();
+  if (isAdmin) {
+    await execute('UPDATE users SET is_admin = TRUE WHERE id = $1', [id]);
+  }
+
+  return { id, username, email: email.toLowerCase(), is_admin: isAdmin };
 }
 
 export async function authenticateUser(email: string, password: string): Promise<User | null> {

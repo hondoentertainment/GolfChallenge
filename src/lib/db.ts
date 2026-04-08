@@ -18,7 +18,6 @@ export async function execute(text: string, params?: unknown[]): Promise<void> {
   await pool.query(text, params);
 }
 
-// Run each CREATE TABLE as a separate statement to avoid multi-statement issues
 export async function initializeDb() {
   const statements = [
     `CREATE TABLE IF NOT EXISTS users (
@@ -49,6 +48,7 @@ export async function initializeDb() {
       invite_code TEXT UNIQUE NOT NULL,
       created_by TEXT NOT NULL REFERENCES users(id),
       season TEXT NOT NULL DEFAULT '2025-2026',
+      archived BOOLEAN DEFAULT FALSE,
       created_at TIMESTAMPTZ DEFAULT NOW()
     )`,
     `CREATE TABLE IF NOT EXISTS league_members (
@@ -93,6 +93,7 @@ export async function initializeDb() {
       golfer_id TEXT NOT NULL REFERENCES golfers(id),
       picked_at TIMESTAMPTZ DEFAULT NOW(),
       pick_order INTEGER NOT NULL,
+      is_missed BOOLEAN DEFAULT FALSE,
       UNIQUE(league_id, user_id, tournament_id),
       UNIQUE(league_id, tournament_id, golfer_id)
     )`,
@@ -113,10 +114,45 @@ export async function initializeDb() {
       league_id TEXT REFERENCES leagues(id),
       created_at TIMESTAMPTZ DEFAULT NOW()
     )`,
-    // Migrations: add columns that might be missing on existing tables
+    `CREATE TABLE IF NOT EXISTS audit_log (
+      id TEXT PRIMARY KEY,
+      league_id TEXT REFERENCES leagues(id),
+      user_id TEXT REFERENCES users(id),
+      action TEXT NOT NULL,
+      details TEXT,
+      created_at TIMESTAMPTZ DEFAULT NOW()
+    )`,
+    `CREATE TABLE IF NOT EXISTS badges (
+      id TEXT PRIMARY KEY,
+      user_id TEXT NOT NULL REFERENCES users(id),
+      league_id TEXT NOT NULL REFERENCES leagues(id),
+      badge_type TEXT NOT NULL,
+      label TEXT NOT NULL,
+      value TEXT,
+      earned_at TIMESTAMPTZ DEFAULT NOW(),
+      UNIQUE(user_id, league_id, badge_type)
+    )`,
+    `CREATE TABLE IF NOT EXISTS archived_seasons (
+      id TEXT PRIMARY KEY,
+      league_id TEXT NOT NULL REFERENCES leagues(id),
+      season TEXT NOT NULL,
+      winner_user_id TEXT REFERENCES users(id),
+      winner_username TEXT,
+      winner_earnings INTEGER DEFAULT 0,
+      standings_json TEXT,
+      archived_at TIMESTAMPTZ DEFAULT NOW(),
+      UNIQUE(league_id, season)
+    )`,
+    // Migrations for existing tables
+    `DO $$ BEGIN ALTER TABLE users ADD COLUMN IF NOT EXISTS is_admin BOOLEAN DEFAULT FALSE; EXCEPTION WHEN duplicate_column THEN NULL; END $$`,
+    `DO $$ BEGIN ALTER TABLE leagues ADD COLUMN IF NOT EXISTS archived BOOLEAN DEFAULT FALSE; EXCEPTION WHEN duplicate_column THEN NULL; END $$`,
+    `DO $$ BEGIN ALTER TABLE picks ADD COLUMN IF NOT EXISTS is_missed BOOLEAN DEFAULT FALSE; EXCEPTION WHEN duplicate_column THEN NULL; END $$`,
+    // Auto-promote admin by env var
     `DO $$ BEGIN
-      ALTER TABLE users ADD COLUMN IF NOT EXISTS is_admin BOOLEAN DEFAULT FALSE;
-    EXCEPTION WHEN duplicate_column THEN NULL;
+      IF current_setting('app.admin_email', TRUE) IS NOT NULL AND current_setting('app.admin_email', TRUE) != '' THEN
+        UPDATE users SET is_admin = TRUE WHERE email = current_setting('app.admin_email', TRUE);
+      END IF;
+    EXCEPTION WHEN OTHERS THEN NULL;
     END $$`,
     // Indexes
     `CREATE INDEX IF NOT EXISTS idx_sessions_user ON sessions(user_id)`,
@@ -125,6 +161,8 @@ export async function initializeDb() {
     `CREATE INDEX IF NOT EXISTS idx_messages_league ON league_messages(league_id)`,
     `CREATE INDEX IF NOT EXISTS idx_notifications_user ON notifications(user_id)`,
     `CREATE INDEX IF NOT EXISTS idx_tournament_results_tournament ON tournament_results(tournament_id)`,
+    `CREATE INDEX IF NOT EXISTS idx_audit_log_league ON audit_log(league_id)`,
+    `CREATE INDEX IF NOT EXISTS idx_badges_user ON badges(user_id, league_id)`,
   ];
 
   for (const sql of statements) {
@@ -133,5 +171,13 @@ export async function initializeDb() {
     } catch {
       // Ignore errors from already-existing objects
     }
+  }
+
+  // Auto-promote admin via env var (simpler than SET config approach)
+  const adminEmail = process.env.ADMIN_EMAIL;
+  if (adminEmail) {
+    try {
+      await pool.query('UPDATE users SET is_admin = TRUE WHERE LOWER(email) = LOWER($1)', [adminEmail]);
+    } catch { /* ignore */ }
   }
 }

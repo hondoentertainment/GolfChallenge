@@ -3,6 +3,8 @@ import { getCurrentUser } from '@/lib/auth';
 import { updateTournamentResult, updateTournamentStatus, getTournaments, getGolfers } from '@/lib/picks';
 import { syncTournamentResults } from '@/lib/pga-data';
 import { notifyLeagueMembers } from '@/lib/notifications';
+import { recalculateBadges } from '@/lib/badges';
+import { logAction } from '@/lib/audit';
 import { query } from '@/lib/db';
 import { ensureSeeded } from '@/lib/seed';
 
@@ -64,7 +66,10 @@ export async function POST(req: NextRequest) {
     );
     for (const l of leagues) {
       await notifyLeagueMembers(l.league_id, user.id, 'results', 'Tournament results updated', `Results for the tournament have been entered. Check your standings!`);
+      await recalculateBadges(l.league_id);
     }
+
+    await logAction('results_entered', `Updated ${updated} results`, undefined, user.id);
 
     return NextResponse.json({ updated });
   } catch (error) {

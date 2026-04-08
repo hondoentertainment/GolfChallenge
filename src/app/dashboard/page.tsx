@@ -38,6 +38,8 @@ export default function DashboardPage() {
   const [joinCode, setJoinCode] = useState("");
   const [joinError, setJoinError] = useState("");
   const [loading, setLoading] = useState(true);
+  const [combined, setCombined] = useState<{ leagueName: string; totalPrizeMoney: number; rank: number }[]>([]);
+  const [totalEarnings, setTotalEarnings] = useState(0);
   const { dark, toggle: toggleDark } = useDarkMode();
 
   const loadNotifications = useCallback(async () => {
@@ -61,6 +63,10 @@ export default function DashboardPage() {
         setUser(authData.user);
         setLeagues(leagueData.leagues || []);
         loadNotifications();
+        // Load combined leaderboard
+        fetch("/api/leaderboard").then(r => r.ok ? r.json() : null).then(d => {
+          if (d) { setCombined(d.leaderboard || []); setTotalEarnings(d.totalEarnings || 0); }
+        }).catch(() => {});
       })
       .catch(() => router.push("/login"))
       .finally(() => setLoading(false));
@@ -180,6 +186,25 @@ export default function DashboardPage() {
           </form>
           {joinError && <p className="text-danger text-sm mt-2">{joinError}</p>}
         </div>
+
+        {/* Combined leaderboard */}
+        {combined.length > 0 && (
+          <div className="bg-surface rounded-xl p-4 sm:p-6 border border-border mb-8">
+            <h2 className="text-lg font-semibold mb-3">Your Overall Earnings</h2>
+            <p className="text-3xl font-bold text-accent mb-3">${totalEarnings.toLocaleString()}</p>
+            <div className="space-y-2">
+              {combined.map((c, i) => (
+                <div key={i} className="flex items-center justify-between px-3 py-2 rounded-lg bg-surface-alt text-sm">
+                  <span className="font-medium">{c.leagueName}</span>
+                  <div className="flex items-center gap-3">
+                    <span className="text-muted">#{c.rank}</span>
+                    <span className="font-bold text-accent">${c.totalPrizeMoney.toLocaleString()}</span>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
 
         {leagues.length === 0 ? (
           <div className="text-center py-16 bg-surface rounded-xl border border-border">

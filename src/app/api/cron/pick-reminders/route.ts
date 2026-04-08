@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getCurrentTournament, getPickOrder } from '@/lib/picks';
+import { getCurrentTournament, getPickOrder, markMissedPicks } from '@/lib/picks';
 import { query, queryOne } from '@/lib/db';
 import { sendPickReminderEmail } from '@/lib/email';
 import { createNotification } from '@/lib/notifications';
@@ -46,7 +46,14 @@ export async function GET(req: NextRequest) {
       }
     }
 
-    return NextResponse.json({ tournament: tournament.name, reminded });
+    // Also mark any missed picks from previous tournaments
+    const tournaments = await query<{ id: string }>('SELECT id FROM tournaments WHERE end_date < $1 AND season = $2', [new Date().toISOString().split('T')[0], '2025-2026']);
+    let totalMissed = 0;
+    for (const t of tournaments) {
+      totalMissed += await markMissedPicks(t.id);
+    }
+
+    return NextResponse.json({ tournament: tournament.name, reminded, missedMarked: totalMissed });
   } catch (e) {
     return NextResponse.json({ error: String(e) }, { status: 500 });
   }
