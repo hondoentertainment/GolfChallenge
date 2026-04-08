@@ -85,12 +85,17 @@ export default function LoginPage() {
             {loading ? "Signing in..." : "Sign In"}
           </button>
 
-          <p className="text-center text-sm text-muted">
-            Don&apos;t have an account?{" "}
-            <Link href="/register" className="text-primary font-medium hover:underline">
-              Create one
+          <div className="flex justify-between text-sm text-muted">
+            <Link href="/reset-password" className="text-primary font-medium hover:underline">
+              Forgot password?
             </Link>
-          </p>
+            <span>
+              No account?{" "}
+              <Link href="/register" className="text-primary font-medium hover:underline">
+                Create one
+              </Link>
+            </span>
+          </div>
         </form>
       </div>
     </div>
