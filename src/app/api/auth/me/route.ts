@@ -3,7 +3,7 @@ import { getCurrentUser, logout } from '@/lib/auth';
 import { ensureSeeded } from '@/lib/seed';
 
 export async function GET() {
-  ensureSeeded();
+  await ensureSeeded();
   try {
     const user = await getCurrentUser();
     if (!user) {

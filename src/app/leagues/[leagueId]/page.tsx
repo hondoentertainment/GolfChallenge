@@ -3,9 +3,12 @@
 import { useEffect, useState, useCallback, useRef } from "react";
 import { useRouter, useParams } from "next/navigation";
 import Link from "next/link";
+import { useCountdown } from "@/hooks/useCountdown";
+import { useDarkMode } from "@/hooks/useDarkMode";
+import { buildChartData, getChartPath } from "@/hooks/useEarningsChart";
 
-interface User { id: string; username: string; }
-interface League { id: string; name: string; invite_code: string; }
+interface User { id: string; username: string; is_admin?: boolean; }
+interface League { id: string; name: string; invite_code: string; created_by: string; }
 interface Member { user_id: string; username: string; }
 interface Payout { position: number; prizeMoney: number; }
 interface Tournament { id: string; name: string; start_date: string; end_date: string; course: string; location: string; purse: number; payouts?: Payout[]; }
@@ -22,7 +25,7 @@ function formatPurse(n: number): string { return n >= 1e6 ? "$" + (n / 1e6).toFi
 function formatDate(s: string): string { return new Date(s + "T12:00:00").toLocaleDateString("en-US", { month: "short", day: "numeric" }); }
 function ordinal(n: number): string { const s = ["th","st","nd","rd"]; const v = n % 100; return n + (s[(v-20)%10] || s[v] || s[0]); }
 
-type Tab = "pick" | "standings" | "schedule" | "payouts" | "h2h" | "history" | "chat";
+type Tab = "pick" | "standings" | "schedule" | "payouts" | "h2h" | "history" | "chat" | "season";
 
 export default function LeaguePage() {
   const router = useRouter();
@@ -55,6 +58,13 @@ export default function LeaguePage() {
   const [chatInput, setChatInput] = useState("");
   const [chatSending, setChatSending] = useState(false);
   const chatEndRef = useRef<HTMLDivElement>(null);
+
+  // Season/Commissioner state
+  const [seasonData, setSeasonData] = useState<{ allComplete: boolean; winner: Standing | null; tournamentsPlayed: number; tournamentsTotal: number; standings: Standing[] } | null>(null);
+  const [commMsg, setCommMsg] = useState("");
+  const { dark, toggle: toggleDark } = useDarkMode();
+  const myDeadline = canPick?.deadline || null;
+  const countdown = useCountdown(myDeadline);
 
   // H2H state
   const [h2hPlayer1, setH2hPlayer1] = useState("");
@@ -169,6 +179,19 @@ export default function LeaguePage() {
     const res = await fetch(`/api/leagues/${leagueId}/history?playerId=${id}`);
     if (res.ok) setHistoryData(await res.json());
   }
+  async function loadSeason() {
+    const res = await fetch(`/api/leagues/${leagueId}/season`);
+    if (res.ok) setSeasonData(await res.json());
+  }
+  async function commAction(action: string, extra?: Record<string, string>) {
+    setCommMsg("");
+    const res = await fetch(`/api/leagues/${leagueId}/commissioner`, {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ action, ...extra }),
+    });
+    const data = await res.json();
+    setCommMsg(res.ok ? data.message || "Done" : data.error || "Failed");
+  }
 
   if (loading) return <div className="flex flex-1 items-center justify-center min-h-screen"><div className="text-muted">Loading league...</div></div>;
 
@@ -184,6 +207,7 @@ export default function LeaguePage() {
     { key: "chat", label: "Chat" },
     { key: "schedule", label: "Schedule" },
     { key: "payouts", label: "Payouts" },
+    { key: "season", label: "Season" },
   ];
 
   return (
@@ -197,6 +221,7 @@ export default function LeaguePage() {
             <span className="text-green-200 hidden sm:inline">/</span>
             <span className="font-medium truncate text-sm sm:text-base">{league?.name}</span>
           </div>
+          <button onClick={toggleDark} className="text-sm bg-white/10 hover:bg-white/20 px-2 py-1 rounded-lg">{dark ? "\u2600\uFE0F" : "\u{1F319}"}</button>
           <span className="text-green-200 text-sm hidden sm:inline">{user?.username}</span>
         </div>
       </nav>
@@ -287,7 +312,12 @@ export default function LeaguePage() {
               <div className="bg-surface rounded-xl p-4 sm:p-6 border border-border">
                 {canPick.canPick ? (
                   <>
-                    <h3 className="font-semibold mb-1 text-sm sm:text-base">Select Your Golfer</h3>
+                    <div className="flex flex-col sm:flex-row sm:items-center justify-between mb-1">
+                      <h3 className="font-semibold text-sm sm:text-base">Select Your Golfer</h3>
+                      {countdown && countdown !== "Expired" && (
+                        <span className="text-xs sm:text-sm font-mono bg-accent/10 text-accent px-3 py-1 rounded-full">{countdown} remaining</span>
+                      )}
+                    </div>
                     <p className="text-xs sm:text-sm text-muted mb-4">You cannot pick the same golfer more than once.</p>
                     {pickError && <div className="bg-red-50 text-danger border border-red-200 rounded-lg p-3 text-sm mb-4">{pickError}</div>}
                     <input type="text" value={golferSearch} onChange={e => setGolferSearch(e.target.value)} placeholder="Search golfers..."
@@ -529,6 +559,91 @@ export default function LeaguePage() {
                 </div>
               </div>
             ))}
+          </div>
+        )}
+
+        {/* SEASON TAB */}
+        {tab === "season" && (
+          <div className="space-y-6">
+            {!seasonData && (
+              <button onClick={loadSeason} className="bg-primary text-white px-6 py-2.5 rounded-lg font-semibold">Load Season Summary</button>
+            )}
+            {seasonData && (
+              <>
+                {/* Season progress */}
+                <div className="bg-surface rounded-xl p-6 border border-border text-center">
+                  <p className="text-sm text-muted">Season Progress</p>
+                  <p className="text-3xl font-bold">{seasonData.tournamentsPlayed} / {seasonData.tournamentsTotal}</p>
+                  <div className="w-full bg-surface-alt rounded-full h-3 mt-3">
+                    <div className="bg-primary rounded-full h-3 transition-all" style={{ width: `${(seasonData.tournamentsPlayed / seasonData.tournamentsTotal) * 100}%` }}/>
+                  </div>
+                  {seasonData.allComplete && seasonData.winner && (
+                    <div className="mt-4 bg-accent/10 rounded-xl p-4 border border-accent/20">
+                      <p className="text-lg font-bold text-accent">Season Champion: {seasonData.winner.username}</p>
+                      <p className="text-accent">{formatMoney(seasonData.winner.totalPrizeMoney)}</p>
+                    </div>
+                  )}
+                </div>
+
+                {/* Earnings chart */}
+                {historyData && historyData.picks.length > 0 && (() => {
+                  const chartData = buildChartData(historyData.picks);
+                  const path = getChartPath(chartData, 600, 200);
+                  const maxVal = Math.max(...chartData.map(p => p.cumulative), 1);
+                  return (
+                    <div className="bg-surface rounded-xl p-6 border border-border">
+                      <h3 className="font-semibold mb-3 text-sm">Your Earnings Over Time</h3>
+                      <svg viewBox="0 0 600 200" className="w-full h-48">
+                        <path d={path} fill="none" stroke="var(--primary)" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"/>
+                        {chartData.map((p, i) => {
+                          const x = 20 + (i / Math.max(chartData.length - 1, 1)) * 560;
+                          const y = 20 + 160 - (p.cumulative / maxVal) * 160;
+                          return <circle key={i} cx={x} cy={y} r="4" fill="var(--accent)"><title>{p.label}: {formatMoney(p.cumulative)}</title></circle>;
+                        })}
+                      </svg>
+                    </div>
+                  );
+                })()}
+
+                {/* Tiebreaker standings */}
+                <div className="bg-surface rounded-xl border border-border overflow-x-auto">
+                  <table className="w-full">
+                    <thead><tr className="bg-surface-alt border-b border-border">
+                      <th className="text-left px-4 py-3 text-xs font-semibold text-muted">#</th>
+                      <th className="text-left px-4 py-3 text-xs font-semibold text-muted">Player</th>
+                      <th className="text-right px-4 py-3 text-xs font-semibold text-muted">Earnings</th>
+                      <th className="text-right px-4 py-3 text-xs font-semibold text-muted">Picks</th>
+                    </tr></thead>
+                    <tbody>
+                      {seasonData.standings.map((s: Standing & { top10Count?: number; winCount?: number }, i: number) => (
+                        <tr key={s.userId} className={`border-b border-border last:border-0 ${s.userId === user?.id ? "bg-primary/5" : ""}`}>
+                          <td className="px-4 py-3 font-bold">{i + 1}</td>
+                          <td className="px-4 py-3 font-medium text-sm">{s.username}</td>
+                          <td className="px-4 py-3 text-right font-bold text-accent">{formatMoney(s.totalPrizeMoney)}</td>
+                          <td className="px-4 py-3 text-right text-muted text-sm">{s.pickCount}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                  <p className="text-xs text-muted p-3">Tiebreaker: most top-10 finishes, then most wins.</p>
+                </div>
+
+                {/* Commissioner tools */}
+                {league && (league.created_by === user?.id || user?.is_admin) && (
+                  <div className="bg-surface rounded-xl p-6 border border-border">
+                    <h3 className="font-semibold mb-4 text-sm">Commissioner Tools</h3>
+                    {commMsg && <p className="text-sm mb-3 text-accent font-medium">{commMsg}</p>}
+                    <div className="flex flex-wrap gap-2">
+                      <button onClick={() => commAction("regenerate_invite")} className="text-xs bg-surface-alt border border-border px-3 py-1.5 rounded-lg hover:border-primary">New Invite Code</button>
+                      {members.filter(m => m.user_id !== league.created_by).map(m => (
+                        <button key={m.user_id} onClick={() => { if (confirm(`Remove ${m.username}?`)) commAction("remove_member", { targetUserId: m.user_id }); }}
+                          className="text-xs bg-danger/10 text-danger border border-danger/20 px-3 py-1.5 rounded-lg">Remove {m.username}</button>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </>
+            )}
           </div>
         )}
       </div>

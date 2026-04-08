@@ -3,6 +3,7 @@
 import { useEffect, useState, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
+import { useDarkMode } from "@/hooks/useDarkMode";
 
 interface User {
   id: string;
@@ -37,6 +38,7 @@ export default function DashboardPage() {
   const [joinCode, setJoinCode] = useState("");
   const [joinError, setJoinError] = useState("");
   const [loading, setLoading] = useState(true);
+  const { dark, toggle: toggleDark } = useDarkMode();
 
   const loadNotifications = useCallback(async () => {
     try {
@@ -114,6 +116,9 @@ export default function DashboardPage() {
                 Admin
               </Link>
             )}
+            <button onClick={toggleDark} className="text-sm bg-white/10 hover:bg-white/20 px-2.5 py-1.5 rounded-lg" title="Toggle dark mode">
+              {dark ? "\u2600\uFE0F" : "\u{1F319}"}
+            </button>
             <button onClick={() => setShowNotifs(!showNotifs)} className="relative text-sm bg-white/10 hover:bg-white/20 px-2.5 py-1.5 rounded-lg">
               &#128276;
               {unreadCount > 0 && (

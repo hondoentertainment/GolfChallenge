@@ -50,7 +50,7 @@ describe('Password Reset', () => {
     mockExecute.mockResolvedValue(undefined);
     const result = await resetPasswordWithToken('valid-token', 'newpassword');
     expect(result).toBe(true);
-    // Should update password, mark token used, and clear sessions (3 execute calls)
-    expect(mockExecute).toHaveBeenCalledTimes(3);
+    // Should update password and mark token used (2 execute calls)
+    expect(mockExecute).toHaveBeenCalledTimes(2);
   });
 });

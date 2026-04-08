@@ -8,6 +8,7 @@ const config: Config = {
   moduleNameMapper: {
     '^@/(.*)$': '<rootDir>/src/$1',
     '^uuid$': '<rootDir>/__tests__/__mocks__/uuid.ts',
+    '^jose$': '<rootDir>/__tests__/__mocks__/jose.ts',
   },
   transform: {
     '^.+\\.tsx?$': ['ts-jest', {

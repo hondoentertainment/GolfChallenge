@@ -16,6 +16,23 @@
   --success: #2d5a27;
 }
 
+/* Manual dark mode toggle via .dark class on <html> */
+:root.dark {
+  --background: #0f1a0f;
+  --foreground: #e0e8e0;
+  --primary: #4a8c3f;
+  --primary-light: #5ca84e;
+  --primary-dark: #2d5a27;
+  --accent: #d4b96f;
+  --accent-light: #e0cb8a;
+  --surface: #1a2e1a;
+  --surface-alt: #243524;
+  --border: #3a5a3a;
+  --muted: #8a9c8a;
+  --danger: #fc8181;
+  --success: #68d391;
+}
+
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
@@ -41,7 +58,7 @@ body {
 }
 
 @media (prefers-color-scheme: dark) {
-  :root {
+  :root:not(.light) {
     --background: #0f1a0f;
     --foreground: #e0e8e0;
     --primary: #4a8c3f;
