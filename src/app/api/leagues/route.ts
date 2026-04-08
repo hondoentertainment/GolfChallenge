@@ -4,14 +4,14 @@ import { createLeague, getUserLeagues, joinLeague } from '@/lib/leagues';
 import { ensureSeeded } from '@/lib/seed';
 
 export async function GET() {
-  ensureSeeded();
+  await ensureSeeded();
   try {
     const user = await getCurrentUser();
     if (!user) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
-    const leagues = getUserLeagues(user.id);
+    const leagues = await getUserLeagues(user.id);
     return NextResponse.json({ leagues });
   } catch {
     return NextResponse.json({ error: 'Failed to fetch leagues' }, { status: 500 });
@@ -19,7 +19,7 @@ export async function GET() {
 }
 
 export async function POST(req: NextRequest) {
-  ensureSeeded();
+  await ensureSeeded();
   try {
     const user = await getCurrentUser();
     if (!user) {
@@ -28,21 +28,19 @@ export async function POST(req: NextRequest) {
 
     const { name, inviteCode } = await req.json();
 
-    // If inviteCode is provided, join existing league
     if (inviteCode) {
-      const league = joinLeague(inviteCode, user.id);
+      const league = await joinLeague(inviteCode, user.id);
       if (!league) {
         return NextResponse.json({ error: 'Invalid invite code' }, { status: 404 });
       }
       return NextResponse.json({ league });
     }
 
-    // Otherwise create new league
     if (!name) {
       return NextResponse.json({ error: 'League name is required' }, { status: 400 });
     }
 
-    const league = createLeague(name, user.id);
+    const league = await createLeague(name, user.id);
     return NextResponse.json({ league });
   } catch {
     return NextResponse.json({ error: 'Failed to create/join league' }, { status: 500 });

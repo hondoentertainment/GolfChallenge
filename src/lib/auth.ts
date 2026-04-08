@@ -1,7 +1,7 @@
 import { cookies } from 'next/headers';
 import { v4 as uuidv4 } from 'uuid';
 import bcrypt from 'bcryptjs';
-import getDb from './db';
+import { query, queryOne, execute } from './db';
 
 export interface User {
   id: string;
@@ -15,14 +15,14 @@ const SESSION_COOKIE = 'golf_session';
 const sessions = new Map<string, string>(); // sessionId -> userId
 
 export async function createUser(username: string, email: string, password: string): Promise<User> {
-  const db = getDb();
   const id = uuidv4();
   const passwordHash = await bcrypt.hash(password, 10);
 
   try {
-    db.prepare(
-      'INSERT INTO users (id, username, email, password_hash) VALUES (?, ?, ?, ?)'
-    ).run(id, username, email.toLowerCase(), passwordHash);
+    await execute(
+      'INSERT INTO users (id, username, email, password_hash) VALUES ($1, $2, $3, $4)',
+      [id, username, email.toLowerCase(), passwordHash]
+    );
   } catch {
     throw new Error('Username or email already exists');
   }
@@ -31,10 +31,10 @@ export async function createUser(username: string, email: string, password: stri
 }
 
 export async function authenticateUser(email: string, password: string): Promise<User | null> {
-  const db = getDb();
-  const row = db.prepare(
-    'SELECT id, username, email, password_hash FROM users WHERE email = ?'
-  ).get(email.toLowerCase()) as { id: string; username: string; email: string; password_hash: string } | undefined;
+  const row = await queryOne<{ id: string; username: string; email: string; password_hash: string }>(
+    'SELECT id, username, email, password_hash FROM users WHERE email = $1',
+    [email.toLowerCase()]
+  );
 
   if (!row) return null;
 
@@ -69,10 +69,10 @@ export async function getCurrentUser(): Promise<User | null> {
   const userId = sessions.get(sessionId);
   if (!userId) return null;
 
-  const db = getDb();
-  const row = db.prepare(
-    'SELECT id, username, email FROM users WHERE id = ?'
-  ).get(userId) as User | undefined;
+  const row = await queryOne<User>(
+    'SELECT id, username, email FROM users WHERE id = $1',
+    [userId]
+  );
 
   return row || null;
 }

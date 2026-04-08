@@ -1,4 +1,4 @@
-import getDb from './db';
+import { query, queryOne, execute } from './db';
 import { v4 as uuidv4 } from 'uuid';
 
 export interface League {
@@ -27,22 +27,20 @@ function generateInviteCode(): string {
   return code;
 }
 
-export function createLeague(name: string, createdBy: string, season = '2025-2026'): League {
-  const db = getDb();
+export async function createLeague(name: string, createdBy: string, season = '2025-2026'): Promise<League> {
   const id = uuidv4();
   const inviteCode = generateInviteCode();
   const memberId = uuidv4();
 
-  db.transaction(() => {
-    db.prepare(
-      'INSERT INTO leagues (id, name, invite_code, created_by, season) VALUES (?, ?, ?, ?, ?)'
-    ).run(id, name, inviteCode, createdBy, season);
+  await execute(
+    'INSERT INTO leagues (id, name, invite_code, created_by, season) VALUES ($1, $2, $3, $4, $5)',
+    [id, name, inviteCode, createdBy, season]
+  );
 
-    // Auto-join creator to league
-    db.prepare(
-      'INSERT INTO league_members (id, league_id, user_id) VALUES (?, ?, ?)'
-    ).run(memberId, id, createdBy);
-  })();
+  await execute(
+    'INSERT INTO league_members (id, league_id, user_id) VALUES ($1, $2, $3)',
+    [memberId, id, createdBy]
+  );
 
   return {
     id,
@@ -54,59 +52,58 @@ export function createLeague(name: string, createdBy: string, season = '2025-202
   };
 }
 
-export function joinLeague(inviteCode: string, userId: string): League | null {
-  const db = getDb();
-  const league = db.prepare(
-    'SELECT * FROM leagues WHERE invite_code = ?'
-  ).get(inviteCode) as League | undefined;
+export async function joinLeague(inviteCode: string, userId: string): Promise<League | null> {
+  const league = await queryOne<League>(
+    'SELECT * FROM leagues WHERE invite_code = $1',
+    [inviteCode]
+  );
 
   if (!league) return null;
 
-  const existing = db.prepare(
-    'SELECT id FROM league_members WHERE league_id = ? AND user_id = ?'
-  ).get(league.id, userId);
+  const existing = await queryOne(
+    'SELECT id FROM league_members WHERE league_id = $1 AND user_id = $2',
+    [league.id, userId]
+  );
 
-  if (existing) return league; // Already a member
+  if (existing) return league;
 
-  db.prepare(
-    'INSERT INTO league_members (id, league_id, user_id) VALUES (?, ?, ?)'
-  ).run(uuidv4(), league.id, userId);
+  await execute(
+    'INSERT INTO league_members (id, league_id, user_id) VALUES ($1, $2, $3)',
+    [uuidv4(), league.id, userId]
+  );
 
   return league;
 }
 
-export function getUserLeagues(userId: string): (League & { member_count: number })[] {
-  const db = getDb();
-  return db.prepare(`
-    SELECT l.*, COUNT(lm2.id) as member_count
+export async function getUserLeagues(userId: string): Promise<(League & { member_count: number })[]> {
+  return query<League & { member_count: number }>(`
+    SELECT l.*, COUNT(lm2.id)::int as member_count
     FROM leagues l
-    JOIN league_members lm ON l.id = lm.league_id AND lm.user_id = ?
+    JOIN league_members lm ON l.id = lm.league_id AND lm.user_id = $1
     JOIN league_members lm2 ON l.id = lm2.league_id
     GROUP BY l.id
     ORDER BY l.created_at DESC
-  `).all(userId) as (League & { member_count: number })[];
+  `, [userId]);
 }
 
-export function getLeague(leagueId: string): League | null {
-  const db = getDb();
-  return db.prepare('SELECT * FROM leagues WHERE id = ?').get(leagueId) as League | null;
+export async function getLeague(leagueId: string): Promise<League | null> {
+  return queryOne<League>('SELECT * FROM leagues WHERE id = $1', [leagueId]);
 }
 
-export function getLeagueMembers(leagueId: string): LeagueMember[] {
-  const db = getDb();
-  return db.prepare(`
+export async function getLeagueMembers(leagueId: string): Promise<LeagueMember[]> {
+  return query<LeagueMember>(`
     SELECT lm.*, u.username
     FROM league_members lm
     JOIN users u ON lm.user_id = u.id
-    WHERE lm.league_id = ?
+    WHERE lm.league_id = $1
     ORDER BY lm.joined_at ASC
-  `).all(leagueId) as LeagueMember[];
+  `, [leagueId]);
 }
 
-export function isLeagueMember(leagueId: string, userId: string): boolean {
-  const db = getDb();
-  const row = db.prepare(
-    'SELECT id FROM league_members WHERE league_id = ? AND user_id = ?'
-  ).get(leagueId, userId);
+export async function isLeagueMember(leagueId: string, userId: string): Promise<boolean> {
+  const row = await queryOne(
+    'SELECT id FROM league_members WHERE league_id = $1 AND user_id = $2',
+    [leagueId, userId]
+  );
   return !!row;
 }

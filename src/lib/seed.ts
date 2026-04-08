@@ -1,12 +1,12 @@
-import { getDbAsync } from './db';
+import { initializeDb } from './db';
 import { seedTournaments, seedGolfers } from './pga-schedule';
 
 let seeded = false;
 
 export async function ensureSeeded() {
   if (seeded) return;
-  await getDbAsync(); // Initialize DB first
-  seedTournaments();
-  seedGolfers();
+  await initializeDb();
+  await seedTournaments();
+  await seedGolfers();
   seeded = true;
 }

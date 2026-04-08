@@ -4,13 +4,12 @@ import { getTournamentPayouts } from '@/lib/pga-schedule';
 import { ensureSeeded } from '@/lib/seed';
 
 export async function GET() {
-  ensureSeeded();
+  await ensureSeeded();
   try {
-    const tournaments = getTournaments();
-    const golfers = getGolfers();
-    const currentTournament = getCurrentTournament();
+    const tournaments = await getTournaments();
+    const golfers = await getGolfers();
+    const currentTournament = await getCurrentTournament();
 
-    // Include prize payouts for each tournament
     const tournamentsWithPayouts = tournaments.map(t => ({
       ...t,
       payouts: getTournamentPayouts(t.purse),

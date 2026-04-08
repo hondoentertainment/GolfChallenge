@@ -4,7 +4,7 @@ import { getLeague, getLeagueMembers, isLeagueMember } from '@/lib/leagues';
 import { ensureSeeded } from '@/lib/seed';
 
 export async function GET(req: NextRequest, { params }: { params: Promise<{ leagueId: string }> }) {
-  ensureSeeded();
+  await ensureSeeded();
   try {
     const user = await getCurrentUser();
     if (!user) {
@@ -13,12 +13,12 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ leag
 
     const { leagueId } = await params;
 
-    if (!isLeagueMember(leagueId, user.id)) {
+    if (!(await isLeagueMember(leagueId, user.id))) {
       return NextResponse.json({ error: 'Not a member of this league' }, { status: 403 });
     }
 
-    const league = getLeague(leagueId);
-    const members = getLeagueMembers(leagueId);
+    const league = await getLeague(leagueId);
+    const members = await getLeagueMembers(leagueId);
 
     return NextResponse.json({ league, members });
   } catch {

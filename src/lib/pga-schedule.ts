@@ -1,4 +1,4 @@
-import getDb from './db';
+import { query, execute, queryOne } from './db';
 import { v4 as uuidv4 } from 'uuid';
 
 // 2025-2026 PGA Tour Season: Masters through U.S. Open
@@ -325,32 +325,21 @@ export const PGA_GOLFERS = [
   { name: "Seamus Power", worldRanking: 200, country: "IRL" },
 ];
 
-export function seedTournaments() {
-  const db = getDb();
-  const existing = db.prepare('SELECT COUNT(*) as count FROM tournaments').get() as { count: number };
-  if (existing.count > 0) return;
+export async function seedTournaments() {
+  const existing = await queryOne<{ count: string }>('SELECT COUNT(*) as count FROM tournaments');
+  if (Number(existing?.count) > 0) return;
 
-  const insert = db.prepare(
-    'INSERT INTO tournaments (id, name, start_date, end_date, course, location, purse, season) VALUES (?, ?, ?, ?, ?, ?, ?, ?)'
-  );
-
-  const insertMany = db.transaction(() => {
-    for (const t of PGA_SCHEDULE_2025_2026) {
-      insert.run(uuidv4(), t.name, t.startDate, t.endDate, t.course, t.location, t.purse, '2025-2026');
-    }
-  });
-
-  insertMany();
+  for (const t of PGA_SCHEDULE_2025_2026) {
+    await execute(
+      'INSERT INTO tournaments (id, name, start_date, end_date, course, location, purse, season) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)',
+      [uuidv4(), t.name, t.startDate, t.endDate, t.course, t.location, t.purse, '2025-2026']
+    );
+  }
 }
 
-export function seedGolfers() {
-  const db = getDb();
-  const existing = db.prepare('SELECT COUNT(*) as count FROM golfers').get() as { count: number };
-  if (existing.count > 0) return;
-
-  const insert = db.prepare(
-    'INSERT INTO golfers (id, name, world_ranking, country) VALUES (?, ?, ?, ?)'
-  );
+export async function seedGolfers() {
+  const existing = await queryOne<{ count: string }>('SELECT COUNT(*) as count FROM golfers');
+  if (Number(existing?.count) > 0) return;
 
   // De-duplicate by name (keep lowest ranking)
   const seen = new Set<string>();
@@ -360,13 +349,12 @@ export function seedGolfers() {
     return true;
   });
 
-  const insertMany = db.transaction(() => {
-    for (const g of uniqueGolfers) {
-      insert.run(uuidv4(), g.name, g.worldRanking, g.country);
-    }
-  });
-
-  insertMany();
+  for (const g of uniqueGolfers) {
+    await execute(
+      'INSERT INTO golfers (id, name, world_ranking, country) VALUES ($1, $2, $3, $4)',
+      [uuidv4(), g.name, g.worldRanking, g.country]
+    );
+  }
 }
 
 export function getPickDeadline(pickPosition: number, tournamentStartDate: string): Date {

@@ -1,8 +1,7 @@
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
-  // sql.js requires WASM support
-  serverExternalPackages: ["sql.js"],
+  serverExternalPackages: ["pg"],
 };
 
 export default nextConfig;

@@ -5,7 +5,7 @@ import { getLeagueStandings } from '@/lib/picks';
 import { ensureSeeded } from '@/lib/seed';
 
 export async function GET(req: NextRequest, { params }: { params: Promise<{ leagueId: string }> }) {
-  ensureSeeded();
+  await ensureSeeded();
   try {
     const user = await getCurrentUser();
     if (!user) {
@@ -14,11 +14,11 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ leag
 
     const { leagueId } = await params;
 
-    if (!isLeagueMember(leagueId, user.id)) {
+    if (!(await isLeagueMember(leagueId, user.id))) {
       return NextResponse.json({ error: 'Not a member of this league' }, { status: 403 });
     }
 
-    const standings = getLeagueStandings(leagueId);
+    const standings = await getLeagueStandings(leagueId);
     return NextResponse.json({ standings });
   } catch {
     return NextResponse.json({ error: 'Failed to fetch standings' }, { status: 500 });
