@@ -1,51 +1,19 @@
 import { query, execute, queryOne } from './db';
 import { v4 as uuidv4 } from 'uuid';
 
-// Full 2025-2026 PGA Tour Season Schedule
-// Excludes: Zurich Classic (team event), opposite-field events
-// The Sentry canceled for 2026 (course issues at Kapalua)
+// 2025-2026 PGA Tour Challenge: Masters through U.S. Open
+// Excludes: Zurich Classic (team event)
 export const PGA_SCHEDULE_2025_2026 = [
-  // January
-  { name: "Sony Open in Hawaii", startDate: "2026-01-15", endDate: "2026-01-18", course: "Waialae Country Club", location: "Honolulu, HI", purse: 9100000 },
-  { name: "The American Express", startDate: "2026-01-22", endDate: "2026-01-25", course: "PGA West", location: "La Quinta, CA", purse: 9200000 },
-  { name: "Farmers Insurance Open", startDate: "2026-01-29", endDate: "2026-02-01", course: "Torrey Pines", location: "San Diego, CA", purse: 9600000 },
-  // February
-  { name: "WM Phoenix Open", startDate: "2026-02-05", endDate: "2026-02-08", course: "TPC Scottsdale", location: "Scottsdale, AZ", purse: 9600000 },
-  { name: "AT&T Pebble Beach Pro-Am", startDate: "2026-02-12", endDate: "2026-02-15", course: "Pebble Beach Golf Links", location: "Pebble Beach, CA", purse: 20000000 },
-  { name: "The Genesis Invitational", startDate: "2026-02-19", endDate: "2026-02-22", course: "Riviera Country Club", location: "Pacific Palisades, CA", purse: 20000000 },
-  { name: "Cognizant Classic", startDate: "2026-02-26", endDate: "2026-03-01", course: "PGA National Resort", location: "Palm Beach Gardens, FL", purse: 9600000 },
-  // March
-  { name: "Arnold Palmer Invitational", startDate: "2026-03-05", endDate: "2026-03-08", course: "Bay Hill Club & Lodge", location: "Orlando, FL", purse: 20000000 },
-  { name: "THE PLAYERS Championship", startDate: "2026-03-12", endDate: "2026-03-15", course: "TPC Sawgrass", location: "Ponte Vedra Beach, FL", purse: 25000000 },
-  { name: "Valspar Championship", startDate: "2026-03-19", endDate: "2026-03-22", course: "Innisbrook Resort", location: "Palm Harbor, FL", purse: 9100000 },
-  { name: "Texas Children's Houston Open", startDate: "2026-03-26", endDate: "2026-03-29", course: "Memorial Park Golf Course", location: "Houston, TX", purse: 9900000 },
-  // April
-  { name: "Valero Texas Open", startDate: "2026-04-02", endDate: "2026-04-05", course: "TPC San Antonio", location: "San Antonio, TX", purse: 9800000 },
   { name: "Masters Tournament", startDate: "2026-04-09", endDate: "2026-04-13", course: "Augusta National Golf Club", location: "Augusta, GA", purse: 20000000 },
   { name: "RBC Heritage", startDate: "2026-04-16", endDate: "2026-04-19", course: "Harbour Town Golf Links", location: "Hilton Head, SC", purse: 20000000 },
   // Zurich Classic EXCLUDED (team event) - Apr 23-26
   { name: "Cadillac Championship", startDate: "2026-04-30", endDate: "2026-05-03", course: "Trump National Doral", location: "Miami, FL", purse: 20000000 },
-  // May
   { name: "Truist Championship", startDate: "2026-05-07", endDate: "2026-05-10", course: "Quail Hollow Club", location: "Charlotte, NC", purse: 20000000 },
   { name: "PGA Championship", startDate: "2026-05-15", endDate: "2026-05-18", course: "Aronimink Golf Club", location: "Newtown Square, PA", purse: 19000000 },
   { name: "CJ Cup Byron Nelson", startDate: "2026-05-21", endDate: "2026-05-24", course: "TPC Craig Ranch", location: "McKinney, TX", purse: 9500000 },
-  // June
   { name: "The Memorial Tournament", startDate: "2026-06-04", endDate: "2026-06-07", course: "Muirfield Village Golf Club", location: "Dublin, OH", purse: 20000000 },
   { name: "RBC Canadian Open", startDate: "2026-06-11", endDate: "2026-06-14", course: "TPC Toronto at Osprey Valley", location: "Caledon, ON", purse: 9800000 },
   { name: "U.S. Open", startDate: "2026-06-18", endDate: "2026-06-21", course: "Shinnecock Hills Golf Club", location: "Southampton, NY", purse: 21500000 },
-  { name: "Travelers Championship", startDate: "2026-06-25", endDate: "2026-06-28", course: "TPC River Highlands", location: "Cromwell, CT", purse: 20000000 },
-  // July
-  { name: "John Deere Classic", startDate: "2026-07-02", endDate: "2026-07-05", course: "TPC Deere Run", location: "Silvis, IL", purse: 8400000 },
-  { name: "Genesis Scottish Open", startDate: "2026-07-09", endDate: "2026-07-12", course: "The Renaissance Club", location: "North Berwick, Scotland", purse: 9000000 },
-  { name: "The Open Championship", startDate: "2026-07-16", endDate: "2026-07-19", course: "Royal Birkdale Golf Club", location: "Southport, England", purse: 17000000 },
-  { name: "3M Open", startDate: "2026-07-23", endDate: "2026-07-26", course: "TPC Twin Cities", location: "Blaine, MN", purse: 8400000 },
-  // August
-  { name: "Rocket Mortgage Classic", startDate: "2026-07-30", endDate: "2026-08-02", course: "Detroit Golf Club", location: "Detroit, MI", purse: 9600000 },
-  { name: "Wyndham Championship", startDate: "2026-08-06", endDate: "2026-08-09", course: "Sedgefield Country Club", location: "Greensboro, NC", purse: 8400000 },
-  // FedExCup Playoffs
-  { name: "FedEx St. Jude Championship", startDate: "2026-08-13", endDate: "2026-08-16", course: "TPC Southwind", location: "Memphis, TN", purse: 20000000 },
-  { name: "BMW Championship", startDate: "2026-08-20", endDate: "2026-08-23", course: "Bellerive Country Club", location: "St. Louis, MO", purse: 20000000 },
-  { name: "TOUR Championship", startDate: "2026-08-27", endDate: "2026-08-30", course: "East Lake Golf Club", location: "Atlanta, GA", purse: 40000000 },
 ];
 
 // Standard PGA Tour prize money payout percentages (% of purse)
