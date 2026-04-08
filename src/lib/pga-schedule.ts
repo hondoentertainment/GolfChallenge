@@ -334,17 +334,21 @@ export async function seedTournaments() {
 
 export async function seedGolfers() {
   const existing = await queryOne<{ count: string }>('SELECT COUNT(*) as count FROM golfers');
-  if (Number(existing?.count) > 0) return;
 
-  // De-duplicate by name (keep lowest ranking)
-  const seen = new Set<string>();
-  const uniqueGolfers = PGA_GOLFERS.filter(g => {
-    if (seen.has(g.name)) return false;
-    seen.add(g.name);
-    return true;
-  });
+  if (Number(existing?.count) > 0) {
+    // Clean up any duplicate golfer names in the database (keep the one with lowest world_ranking)
+    await execute(`
+      DELETE FROM golfers WHERE id IN (
+        SELECT id FROM (
+          SELECT id, ROW_NUMBER() OVER (PARTITION BY name ORDER BY world_ranking ASC) as rn
+          FROM golfers
+        ) ranked WHERE rn > 1
+      )
+    `);
+    return;
+  }
 
-  for (const g of uniqueGolfers) {
+  for (const g of PGA_GOLFERS) {
     await execute(
       'INSERT INTO golfers (id, name, world_ranking, country) VALUES ($1, $2, $3, $4)',
       [uuidv4(), g.name, g.worldRanking, g.country]
