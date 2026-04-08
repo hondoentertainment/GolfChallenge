@@ -11,9 +11,6 @@ export interface User {
 
 const SESSION_COOKIE = 'golf_session';
 
-// Simple in-memory session store (in production, use DB or Redis)
-const sessions = new Map<string, string>(); // sessionId -> userId
-
 export async function createUser(username: string, email: string, password: string): Promise<User> {
   const id = uuidv4();
   const passwordHash = await bcrypt.hash(password, 10);
@@ -46,7 +43,11 @@ export async function authenticateUser(email: string, password: string): Promise
 
 export async function createSession(userId: string): Promise<string> {
   const sessionId = uuidv4();
-  sessions.set(sessionId, userId);
+  const expiresAt = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000); // 30 days
+  await execute(
+    'INSERT INTO sessions (id, user_id, expires_at) VALUES ($1, $2, $3)',
+    [sessionId, userId, expiresAt.toISOString()]
+  );
   return sessionId;
 }
 
@@ -66,12 +67,12 @@ export async function getCurrentUser(): Promise<User | null> {
   const sessionId = cookieStore.get(SESSION_COOKIE)?.value;
   if (!sessionId) return null;
 
-  const userId = sessions.get(sessionId);
-  if (!userId) return null;
-
-  const row = await queryOne<User>(
-    'SELECT id, username, email FROM users WHERE id = $1',
-    [userId]
+  const row = await queryOne<{ id: string; username: string; email: string }>(
+    `SELECT u.id, u.username, u.email
+     FROM sessions s
+     JOIN users u ON s.user_id = u.id
+     WHERE s.id = $1 AND s.expires_at > NOW()`,
+    [sessionId]
   );
 
   return row || null;
@@ -81,7 +82,7 @@ export async function logout() {
   const cookieStore = await cookies();
   const sessionId = cookieStore.get(SESSION_COOKIE)?.value;
   if (sessionId) {
-    sessions.delete(sessionId);
+    await execute('DELETE FROM sessions WHERE id = $1', [sessionId]);
   }
   cookieStore.delete(SESSION_COOKIE);
 }

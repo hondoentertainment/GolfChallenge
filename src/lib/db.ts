@@ -75,6 +75,13 @@ export async function initializeDb() {
       UNIQUE(tournament_id, golfer_id)
     );
 
+    CREATE TABLE IF NOT EXISTS sessions (
+      id TEXT PRIMARY KEY,
+      user_id TEXT NOT NULL REFERENCES users(id),
+      expires_at TIMESTAMPTZ NOT NULL,
+      created_at TIMESTAMPTZ DEFAULT NOW()
+    );
+
     CREATE TABLE IF NOT EXISTS picks (
       id TEXT PRIMARY KEY,
       league_id TEXT NOT NULL REFERENCES leagues(id),
