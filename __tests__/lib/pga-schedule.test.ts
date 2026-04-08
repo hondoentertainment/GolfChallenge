@@ -47,11 +47,51 @@ describe('PGA Schedule', () => {
       expect(new Date(t.endDate).getTime()).toBeGreaterThan(new Date(t.startDate).getTime());
     }
   });
+
+  test('tournament names are unique', () => {
+    const names = PGA_SCHEDULE_2025_2026.map(t => t.name);
+    expect(new Set(names).size).toBe(names.length);
+  });
 });
 
-describe('PGA Golfers', () => {
+describe('PGA Golfers - No Duplicates', () => {
   test('has at least 150 golfers', () => {
     expect(PGA_GOLFERS.length).toBeGreaterThanOrEqual(150);
+  });
+
+  test('NO DUPLICATE NAMES in golfer list', () => {
+    const names = PGA_GOLFERS.map(g => g.name.toLowerCase());
+    const seen = new Set<string>();
+    const duplicates: string[] = [];
+    for (const name of names) {
+      if (seen.has(name)) {
+        duplicates.push(name);
+      }
+      seen.add(name);
+    }
+    expect(duplicates).toEqual([]);
+    expect(new Set(names).size).toBe(names.length);
+  });
+
+  test('all golfer names are unique (case-insensitive)', () => {
+    const lowerNames = PGA_GOLFERS.map(g => g.name.toLowerCase());
+    const uniqueNames = new Set(lowerNames);
+    expect(uniqueNames.size).toBe(PGA_GOLFERS.length);
+  });
+
+  test('world rankings are unique', () => {
+    const rankings = PGA_GOLFERS.map(g => g.worldRanking);
+    const uniqueRankings = new Set(rankings);
+    // Rankings should be unique
+    expect(uniqueRankings.size).toBe(rankings.length);
+  });
+
+  test('world rankings are contiguous from 1', () => {
+    const sorted = [...PGA_GOLFERS].sort((a, b) => a.worldRanking - b.worldRanking);
+    expect(sorted[0].worldRanking).toBe(1);
+    for (let i = 1; i < sorted.length; i++) {
+      expect(sorted[i].worldRanking).toBe(sorted[i - 1].worldRanking + 1);
+    }
   });
 
   test('golfer #1 is Scottie Scheffler', () => {
@@ -68,19 +108,25 @@ describe('PGA Golfers', () => {
     }
   });
 
-  test('world rankings are positive integers', () => {
-    for (const g of PGA_GOLFERS) {
-      expect(g.worldRanking).toBeGreaterThan(0);
-      expect(Number.isInteger(g.worldRanking)).toBe(true);
-    }
-  });
-
   test('includes notable golfers', () => {
     const names = PGA_GOLFERS.map(g => g.name);
     expect(names).toContain('Tiger Woods');
     expect(names).toContain('Rory McIlroy');
     expect(names).toContain('Jordan Spieth');
     expect(names).toContain('Jon Rahm');
+    expect(names).toContain('Phil Mickelson');
+    expect(names).toContain('Bryson DeChambeau');
+  });
+
+  test('seedGolfers dedup filter produces same count as unique names', () => {
+    const seen = new Set<string>();
+    const uniqueGolfers = PGA_GOLFERS.filter(g => {
+      if (seen.has(g.name)) return false;
+      seen.add(g.name);
+      return true;
+    });
+    // After removing dupes from source, these should be equal
+    expect(uniqueGolfers.length).toBe(PGA_GOLFERS.length);
   });
 });
 
@@ -131,13 +177,19 @@ describe('Tournament Payouts', () => {
       expect(payouts[i].prizeMoney).toBeLessThanOrEqual(payouts[i - 1].prizeMoney);
     }
   });
+
+  test('all 9 tournaments have valid payouts', () => {
+    for (const t of PGA_SCHEDULE_2025_2026) {
+      const payouts = getTournamentPayouts(t.purse);
+      expect(payouts.length).toBeGreaterThan(30);
+      expect(payouts[0].prizeMoney).toBe(Math.round(t.purse * 0.18));
+    }
+  });
 });
 
 describe('Pick Deadlines', () => {
   test('Player 1 deadline is Wednesday 6pm PDT', () => {
-    // Thursday tournament start
     const deadline = getPickDeadline(0, '2026-04-09');
-    // Should be Wednesday April 8, 2026 at 6pm PDT = April 9 01:00 UTC
     expect(deadline.getUTCHours()).toBe(1);
   });
 
@@ -151,5 +203,13 @@ describe('Pick Deadlines', () => {
   test('display format is correct', () => {
     expect(getPickDeadlineDisplay(0)).toBe('Wednesday 6:00 PM PDT');
     expect(getPickDeadlineDisplay(1)).toBe('Wednesday 8:00 PM PDT');
+  });
+
+  test('deadlines for all 9 tournaments are valid dates', () => {
+    for (const t of PGA_SCHEDULE_2025_2026) {
+      const d = getPickDeadline(0, t.startDate);
+      expect(d.getTime()).toBeGreaterThan(0);
+      expect(d.getTime()).toBeLessThan(new Date(t.startDate + 'T23:59:59Z').getTime());
+    }
   });
 });
