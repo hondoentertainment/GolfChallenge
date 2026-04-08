@@ -94,7 +94,7 @@ export default function Home() {
           <div className="bg-surface rounded-xl p-8 border border-border space-y-4">
             <div className="flex gap-3">
               <span className="text-primary font-bold min-w-8">1.</span>
-              <p>Follows the full PGA Tour schedule (excluding the Zurich Classic team event).</p>
+              <p>Runs from the <strong>Masters</strong> through the <strong>U.S. Open</strong> (9 tournaments, Zurich Classic excluded).</p>
             </div>
             <div className="flex gap-3">
               <span className="text-primary font-bold min-w-8">2.</span>
@@ -110,15 +110,19 @@ export default function Home() {
             </div>
             <div className="flex gap-3">
               <span className="text-primary font-bold min-w-8">5.</span>
-              <p>No two players in the same league can pick the same golfer for the same tournament.</p>
+              <p><strong>You cannot pick the same golfer more than once.</strong> Choose wisely each week.</p>
             </div>
             <div className="flex gap-3">
               <span className="text-primary font-bold min-w-8">6.</span>
-              <p>Your golfer&apos;s official tournament prize money counts as your score for that week.</p>
+              <p>No two players in the same league can pick the same golfer for the same tournament.</p>
             </div>
             <div className="flex gap-3">
               <span className="text-primary font-bold min-w-8">7.</span>
-              <p>Total prize money accumulated across all tournaments determines the season winner.</p>
+              <p>Your golfer&apos;s official tournament prize money counts as your score for that week (winner gets 18% of purse).</p>
+            </div>
+            <div className="flex gap-3">
+              <span className="text-primary font-bold min-w-8">8.</span>
+              <p>Total prize money accumulated across all tournaments determines the winner.</p>
             </div>
           </div>
         </div>
