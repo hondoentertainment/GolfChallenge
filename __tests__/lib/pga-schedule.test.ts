@@ -9,16 +9,48 @@ import {
 } from '@/lib/pga-schedule';
 
 describe('PGA Schedule', () => {
-  test('has exactly 9 tournaments (Masters through US Open)', () => {
-    expect(PGA_SCHEDULE_2025_2026).toHaveLength(9);
+  test('has 31 tournaments (full season Sony Open through TOUR Championship)', () => {
+    expect(PGA_SCHEDULE_2025_2026).toHaveLength(31);
   });
 
-  test('starts with Masters Tournament', () => {
-    expect(PGA_SCHEDULE_2025_2026[0].name).toBe('Masters Tournament');
+  test('starts with Sony Open in Hawaii', () => {
+    expect(PGA_SCHEDULE_2025_2026[0].name).toBe('Sony Open in Hawaii');
   });
 
-  test('ends with U.S. Open', () => {
-    expect(PGA_SCHEDULE_2025_2026[PGA_SCHEDULE_2025_2026.length - 1].name).toBe('U.S. Open');
+  test('ends with TOUR Championship', () => {
+    expect(PGA_SCHEDULE_2025_2026[PGA_SCHEDULE_2025_2026.length - 1].name).toBe('TOUR Championship');
+  });
+
+  test('includes all four majors', () => {
+    const names = PGA_SCHEDULE_2025_2026.map(t => t.name);
+    expect(names).toContain('Masters Tournament');
+    expect(names).toContain('PGA Championship');
+    expect(names).toContain('U.S. Open');
+    expect(names).toContain('The Open Championship');
+  });
+
+  test('includes THE PLAYERS Championship', () => {
+    const names = PGA_SCHEDULE_2025_2026.map(t => t.name);
+    expect(names).toContain('THE PLAYERS Championship');
+  });
+
+  test('includes all 8 Signature Events', () => {
+    const names = PGA_SCHEDULE_2025_2026.map(t => t.name);
+    expect(names).toContain('AT&T Pebble Beach Pro-Am');
+    expect(names).toContain('The Genesis Invitational');
+    expect(names).toContain('Arnold Palmer Invitational');
+    expect(names).toContain('RBC Heritage');
+    expect(names).toContain('Cadillac Championship');
+    expect(names).toContain('Truist Championship');
+    expect(names).toContain('The Memorial Tournament');
+    expect(names).toContain('Travelers Championship');
+  });
+
+  test('includes FedExCup Playoffs', () => {
+    const names = PGA_SCHEDULE_2025_2026.map(t => t.name);
+    expect(names).toContain('FedEx St. Jude Championship');
+    expect(names).toContain('BMW Championship');
+    expect(names).toContain('TOUR Championship');
   });
 
   test('does not include Zurich Classic', () => {
@@ -178,7 +210,7 @@ describe('Tournament Payouts', () => {
     }
   });
 
-  test('all 9 tournaments have valid payouts', () => {
+  test('all tournaments have valid payouts', () => {
     for (const t of PGA_SCHEDULE_2025_2026) {
       const payouts = getTournamentPayouts(t.purse);
       expect(payouts.length).toBeGreaterThan(30);
