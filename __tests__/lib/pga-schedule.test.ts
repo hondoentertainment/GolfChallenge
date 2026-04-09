@@ -9,8 +9,8 @@ import {
 } from '@/lib/pga-schedule';
 
 describe('PGA Schedule', () => {
-  test('has 9 tournaments (Masters through U.S. Open, Zurich excluded)', () => {
-    expect(PGA_SCHEDULE_2025_2026).toHaveLength(9);
+  test('has 10 tournaments (Masters through U.S. Open, Zurich excluded)', () => {
+    expect(PGA_SCHEDULE_2025_2026).toHaveLength(10);
   });
 
   test('starts with Masters Tournament', () => {

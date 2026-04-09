@@ -11,6 +11,7 @@ export const PGA_SCHEDULE_2025_2026 = [
   { name: "Truist Championship", startDate: "2026-05-07", endDate: "2026-05-10", course: "Quail Hollow Club", location: "Charlotte, NC", purse: 20000000 },
   { name: "PGA Championship", startDate: "2026-05-15", endDate: "2026-05-18", course: "Aronimink Golf Club", location: "Newtown Square, PA", purse: 19000000 },
   { name: "CJ Cup Byron Nelson", startDate: "2026-05-21", endDate: "2026-05-24", course: "TPC Craig Ranch", location: "McKinney, TX", purse: 9500000 },
+  { name: "Charles Schwab Challenge", startDate: "2026-05-28", endDate: "2026-05-31", course: "Colonial Country Club", location: "Fort Worth, TX", purse: 9200000 },
   { name: "The Memorial Tournament", startDate: "2026-06-04", endDate: "2026-06-07", course: "Muirfield Village Golf Club", location: "Dublin, OH", purse: 20000000 },
   { name: "RBC Canadian Open", startDate: "2026-06-11", endDate: "2026-06-14", course: "TPC Toronto at Osprey Valley", location: "Caledon, ON", purse: 9800000 },
   { name: "U.S. Open", startDate: "2026-06-18", endDate: "2026-06-21", course: "Shinnecock Hills Golf Club", location: "Southampton, NY", purse: 21500000 },

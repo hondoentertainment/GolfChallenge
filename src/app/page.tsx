@@ -139,7 +139,7 @@ export default function Home() {
           <div className="bg-surface rounded-xl p-8 border border-border space-y-4">
             <div className="flex gap-3">
               <span className="text-primary font-bold min-w-8">1.</span>
-              <p>Runs from the <strong>Masters</strong> through the <strong>U.S. Open</strong> (9 tournaments, Zurich Classic excluded).</p>
+              <p>Runs from the <strong>Masters</strong> through the <strong>U.S. Open</strong> (10 tournaments, Zurich Classic excluded).</p>
             </div>
             <div className="flex gap-3">
               <span className="text-primary font-bold min-w-8">2.</span>
