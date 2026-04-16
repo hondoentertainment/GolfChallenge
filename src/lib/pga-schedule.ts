@@ -83,6 +83,16 @@ export const PRIZE_PAYOUT_PERCENTAGES: Record<number, number> = {
   65: 0.002,
 };
 
+// Parse a position string ("1", "T2", "T15", "MC", "CUT", "WD", "DQ") to a numeric position.
+// Tied positions (e.g. "T3") return the base number. Non-finishing positions return 0.
+export function parsePosition(posStr: string): number {
+  if (!posStr) return 0;
+  const trimmed = posStr.trim().toUpperCase();
+  if (['MC', 'CUT', 'WD', 'DQ', 'DNS', 'MDF', ''].includes(trimmed)) return 0;
+  const num = parseInt(trimmed.replace(/^T/i, ''), 10);
+  return isNaN(num) ? 0 : num;
+}
+
 // Calculate prize money for a given finish position
 export function calculatePrizeMoney(purse: number, position: number): number {
   if (position <= 0) return 0;

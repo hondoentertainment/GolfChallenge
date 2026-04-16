@@ -5,6 +5,7 @@ jest.mock('@/lib/picks', () => ({
   updateTournamentResult: jest.fn(),
   updateTournamentStatus: jest.fn(),
   getTournaments: jest.fn(() => []),
+  getTournament: jest.fn(() => ({ id: 't-1', purse: 20000000 })),
   getGolfers: jest.fn(() => []),
 }));
 jest.mock('@/lib/pga-data', () => ({
