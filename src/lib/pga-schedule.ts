@@ -4,7 +4,7 @@ import { v4 as uuidv4 } from 'uuid';
 // 2025-2026 PGA Tour Challenge: Masters through U.S. Open
 // Excludes: Zurich Classic (team event)
 export const PGA_SCHEDULE_2025_2026 = [
-  { name: "Masters Tournament", startDate: "2026-04-09", endDate: "2026-04-13", course: "Augusta National Golf Club", location: "Augusta, GA", purse: 20000000 },
+  { name: "Masters Tournament", startDate: "2026-04-09", endDate: "2026-04-13", course: "Augusta National Golf Club", location: "Augusta, GA", purse: 22500000 },
   { name: "RBC Heritage", startDate: "2026-04-16", endDate: "2026-04-19", course: "Harbour Town Golf Links", location: "Hilton Head, SC", purse: 20000000 },
   // Zurich Classic EXCLUDED (team event) - Apr 23-26
   { name: "Cadillac Championship", startDate: "2026-04-30", endDate: "2026-05-03", course: "Trump National Doral", location: "Miami, FL", purse: 20000000 },
@@ -18,7 +18,7 @@ export const PGA_SCHEDULE_2025_2026 = [
 ];
 
 // Standard PGA Tour prize money payout percentages (% of purse)
-// Based on standard 2024-2025 PGA Tour payout structure for full-field events
+// Based on standard 2025-2026 PGA Tour payout structure for full-field events
 export const PRIZE_PAYOUT_PERCENTAGES: Record<number, number> = {
   1: 0.18,
   2: 0.109,
@@ -343,15 +343,21 @@ export async function seedTournaments() {
         [uuidv4(), t.name, t.startDate, t.endDate, t.course, t.location, t.purse, '2025-2026']
       );
     }
-    return;
+  } else if (dbCount === 0) {
+    for (const t of PGA_SCHEDULE_2025_2026) {
+      await execute(
+        'INSERT INTO tournaments (id, name, start_date, end_date, course, location, purse, season) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)',
+        [uuidv4(), t.name, t.startDate, t.endDate, t.course, t.location, t.purse, '2025-2026']
+      );
+    }
   }
 
-  if (dbCount > 0) return;
-
+  // Sync purses for existing tournaments so official purse updates propagate
+  // (e.g. Masters 2026 increased to a record $22.5M)
   for (const t of PGA_SCHEDULE_2025_2026) {
     await execute(
-      'INSERT INTO tournaments (id, name, start_date, end_date, course, location, purse, season) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)',
-      [uuidv4(), t.name, t.startDate, t.endDate, t.course, t.location, t.purse, '2025-2026']
+      `UPDATE tournaments SET purse = $1 WHERE name = $2 AND season = $3 AND purse <> $1`,
+      [t.purse, t.name, '2025-2026']
     );
   }
 }
