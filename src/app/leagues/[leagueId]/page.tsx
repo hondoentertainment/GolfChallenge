@@ -21,6 +21,8 @@ interface Standing { userId: string; username: string; totalPrizeMoney: number; 
 interface ChatMsg { id: string; user_id: string; username: string; message: string; created_at: string; }
 interface H2HMatchup { tournament_name: string; p1_golfer: string; p1_prize: number; p2_golfer: string; p2_prize: number; }
 interface HistoryPick { tournament_name: string; golfer_name: string; position: string | null; prize_money: number; score: string | null; purse: number; }
+interface TournamentResult { golferName: string; position: string; prizeMoney: number; score: string; }
+interface TournamentResults { tournamentId: string; tournamentName: string; results: TournamentResult[]; }
 
 function formatMoney(n: number): string { return n >= 1e6 ? "$" + (n / 1e6).toFixed(2) + "M" : "$" + n.toLocaleString("en-US"); }
 function formatPurse(n: number): string { return n >= 1e6 ? "$" + (n / 1e6).toFixed(0) + "M" : "$" + n.toLocaleString(); }
@@ -88,6 +90,9 @@ export default function LeaguePage() {
   // History state
   const [historyPlayer, setHistoryPlayer] = useState("");
   const [historyData, setHistoryData] = useState<{ picks: HistoryPick[]; totalEarnings: number } | null>(null);
+
+  // Tournament results per golfer (actual earnings by event)
+  const [tournamentResults, setTournamentResults] = useState<TournamentResults[]>([]);
 
   const loadPickData = useCallback(async (tid: string) => {
     const res = await fetch(`/api/leagues/${leagueId}/picks?tournamentId=${tid}`);
@@ -214,6 +219,12 @@ export default function LeaguePage() {
     const res = await fetch(`/api/leagues/${leagueId}/season`);
     if (res.ok) setSeasonData(await res.json());
   }
+  async function loadTournamentResults() {
+    try {
+      const res = await fetch("/api/tournaments/results");
+      if (res.ok) { const d = await res.json(); setTournamentResults(d.results || []); }
+    } catch { /* ignore */ }
+  }
   async function loadGolferForm(golferId: string) {
     setGolferFormLoading(true);
     try {
@@ -301,7 +312,7 @@ export default function LeaguePage() {
         {/* Tabs - scrollable on mobile */}
         <div className="flex gap-1 mb-6 bg-surface-alt rounded-lg p-1 overflow-x-auto">
           {tabs.map(t => (
-            <button key={t.key} onClick={() => { setTab(t.key); if (t.key === "history" && !historyData) loadHistory(); }}
+            <button key={t.key} onClick={() => { setTab(t.key); if (t.key === "history" && !historyData) loadHistory(); if (t.key === "payouts" && tournamentResults.length === 0) loadTournamentResults(); }}
               className={`px-3 sm:px-5 py-2 rounded-md text-xs sm:text-sm font-medium transition-colors whitespace-nowrap ${tab === t.key ? "bg-primary text-white" : "text-muted hover:text-foreground"}`}>
               {t.label}
             </button>
@@ -657,25 +668,54 @@ export default function LeaguePage() {
         {/* PAYOUTS TAB */}
         {tab === "payouts" && (
           <div className="space-y-6">
-            <p className="text-xs sm:text-sm text-muted">Standard PGA Tour payout structure. Winner receives 18% of purse.</p>
-            {tournaments.map(t => (
-              <div key={t.id} className="bg-surface rounded-xl border border-border overflow-hidden">
-                <div className="bg-surface-alt px-4 sm:px-6 py-3 border-b border-border">
-                  <h3 className="font-bold text-sm sm:text-base">{t.name}</h3>
-                  <p className="text-xs sm:text-sm text-muted">{formatPurse(t.purse)} total purse</p>
-                </div>
-                <div className="px-4 sm:px-6 py-4">
-                  <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-x-6 gap-y-1 text-xs sm:text-sm">
-                    {(t.payouts || []).slice(0, 30).map(p => (
-                      <div key={p.position} className="flex justify-between py-1 border-b border-border/50">
-                        <span className={`${p.position <= 3 ? "font-bold" : ""} ${p.position === 1 ? "text-accent" : ""}`}>{ordinal(p.position)}</span>
-                        <span className={`font-medium ${p.position === 1 ? "text-accent font-bold" : ""}`}>{formatMoney(p.prizeMoney)}</span>
+            <p className="text-xs sm:text-sm text-muted">Earnings for each golfer by event. Completed tournaments show actual results; upcoming events show the projected payout structure.</p>
+            {tournaments.map(t => {
+              const trData = tournamentResults.find(r => r.tournamentId === t.id);
+              const hasResults = trData && trData.results.length > 0;
+              return (
+                <div key={t.id} className="bg-surface rounded-xl border border-border overflow-hidden">
+                  <div className="bg-surface-alt px-4 sm:px-6 py-3 border-b border-border flex flex-col sm:flex-row sm:items-center justify-between gap-1">
+                    <div>
+                      <h3 className="font-bold text-sm sm:text-base">{t.name}</h3>
+                      <p className="text-xs sm:text-sm text-muted">{formatPurse(t.purse)} total purse</p>
+                    </div>
+                    {hasResults && <span className="text-xs bg-success/10 text-success px-2 py-0.5 rounded-full font-medium">Results In</span>}
+                  </div>
+                  <div className="px-4 sm:px-6 py-4">
+                    {hasResults ? (
+                      <div className="space-y-0">
+                        <div className="grid grid-cols-[2rem_1fr_4rem_5rem] sm:grid-cols-[2.5rem_1fr_5rem_6rem] gap-x-2 text-xs font-semibold text-muted border-b border-border pb-2 mb-1">
+                          <span>Pos</span><span>Golfer</span><span className="text-right">Score</span><span className="text-right">Earnings</span>
+                        </div>
+                        {trData.results.slice(0, 30).map((r, i) => (
+                          <div key={i} className={`grid grid-cols-[2rem_1fr_4rem_5rem] sm:grid-cols-[2.5rem_1fr_5rem_6rem] gap-x-2 text-xs sm:text-sm py-1.5 border-b border-border/30 ${i < 3 ? "font-semibold" : ""}`}>
+                            <span className={i === 0 ? "text-accent font-bold" : "text-muted"}>{r.position || "-"}</span>
+                            <span className={`truncate ${i === 0 ? "text-accent" : ""}`}>{r.golferName}</span>
+                            <span className="text-right text-muted">{r.score || "-"}</span>
+                            <span className={`text-right font-medium ${r.prizeMoney > 0 ? (i === 0 ? "text-accent font-bold" : "text-foreground") : "text-muted"}`}>{r.prizeMoney > 0 ? formatMoney(r.prizeMoney) : "-"}</span>
+                          </div>
+                        ))}
+                        {trData.results.length > 30 && (
+                          <p className="text-xs text-muted pt-2">+ {trData.results.length - 30} more golfers</p>
+                        )}
                       </div>
-                    ))}
+                    ) : (
+                      <div>
+                        <p className="text-xs text-muted mb-3">Projected payout by position</p>
+                        <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-x-6 gap-y-1 text-xs sm:text-sm">
+                          {(t.payouts || []).slice(0, 30).map(p => (
+                            <div key={p.position} className="flex justify-between py-1 border-b border-border/50">
+                              <span className={`${p.position <= 3 ? "font-bold" : ""} ${p.position === 1 ? "text-accent" : ""}`}>{ordinal(p.position)}</span>
+                              <span className={`font-medium ${p.position === 1 ? "text-accent font-bold" : ""}`}>{formatMoney(p.prizeMoney)}</span>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
                   </div>
                 </div>
-              </div>
-            ))}
+              );
+            })}
           </div>
         )}
 
