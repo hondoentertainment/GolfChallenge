@@ -13,7 +13,7 @@ export async function GET() {
 
     const tournamentsWithPayouts = tournaments.map(t => ({
       ...t,
-      payouts: getTournamentPayouts(t.purse),
+      payouts: getTournamentPayouts(t.purse, t.name),
     }));
 
     // Fetch field for current/upcoming tournament
