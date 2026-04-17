@@ -624,11 +624,21 @@ export default function LeaguePage() {
                 <button onClick={loadH2H} disabled={!h2hPlayer1 || !h2hPlayer2} className="bg-primary text-white px-4 py-2 rounded-lg text-sm font-semibold disabled:opacity-50 w-full sm:w-auto">Compare</button>
               </div>
             </div>
-            {h2hData && (
+            {h2hData && (() => {
+              const p1Name = members.find(m => m.user_id === h2hPlayer1)?.username || "Player 1";
+              const p2Name = members.find(m => m.user_id === h2hPlayer2)?.username || "Player 2";
+              let p1Cum = 0;
+              let p2Cum = 0;
+              const matchupsWithTotals = h2hData.matchups.map(m => {
+                p1Cum += m.p1_prize;
+                p2Cum += m.p2_prize;
+                return { ...m, p1Cum, p2Cum };
+              });
+              return (
               <>
                 <div className="grid grid-cols-3 gap-3 text-center">
                   <div className="bg-surface rounded-xl p-4 border border-border">
-                    <p className="text-xs text-muted">{members.find(m => m.user_id === h2hPlayer1)?.username}</p>
+                    <p className="text-xs text-muted">{p1Name}</p>
                     <p className="text-2xl font-bold text-accent">{formatMoney(h2hData.p1Total)}</p>
                     <p className="text-xs text-muted">{h2hData.p1Wins} week{h2hData.p1Wins !== 1 ? "s" : ""} won</p>
                   </div>
@@ -636,24 +646,48 @@ export default function LeaguePage() {
                     <span className="text-xl font-bold text-muted">VS</span>
                   </div>
                   <div className="bg-surface rounded-xl p-4 border border-border">
-                    <p className="text-xs text-muted">{members.find(m => m.user_id === h2hPlayer2)?.username}</p>
+                    <p className="text-xs text-muted">{p2Name}</p>
                     <p className="text-2xl font-bold text-accent">{formatMoney(h2hData.p2Total)}</p>
                     <p className="text-xs text-muted">{h2hData.p2Wins} week{h2hData.p2Wins !== 1 ? "s" : ""} won</p>
                   </div>
                 </div>
-                <div className="space-y-2">
-                  {h2hData.matchups.map((m, i) => (
-                    <div key={i} className="bg-surface rounded-xl p-4 border border-border">
-                      <p className="text-xs text-muted font-medium mb-2">{m.tournament_name}</p>
-                      <div className="flex items-center justify-between text-sm">
-                        <div className={m.p1_prize >= m.p2_prize ? "font-bold text-primary" : "text-muted"}>{m.p1_golfer || "No pick"} {m.p1_prize > 0 && <span className="text-accent">{formatMoney(m.p1_prize)}</span>}</div>
-                        <div className={m.p2_prize >= m.p1_prize ? "font-bold text-primary text-right" : "text-muted text-right"}>{m.p2_golfer || "No pick"} {m.p2_prize > 0 && <span className="text-accent">{formatMoney(m.p2_prize)}</span>}</div>
-                      </div>
-                    </div>
-                  ))}
+
+                {/* H2H cumulative breakdown */}
+                <div className="bg-surface rounded-xl border border-border overflow-x-auto">
+                  <table className="w-full text-xs sm:text-sm">
+                    <thead>
+                      <tr className="bg-surface-alt border-b border-border">
+                        <th className="text-left px-3 sm:px-4 py-2 font-semibold text-muted">Tournament</th>
+                        <th className="text-left px-2 sm:px-3 py-2 font-semibold text-muted">{p1Name}</th>
+                        <th className="text-right px-2 py-2 font-semibold text-muted">Earned</th>
+                        <th className="text-right px-2 sm:px-3 py-2 font-semibold text-accent">Total</th>
+                        <th className="text-left px-2 sm:px-3 py-2 font-semibold text-muted">{p2Name}</th>
+                        <th className="text-right px-2 py-2 font-semibold text-muted">Earned</th>
+                        <th className="text-right px-2 sm:px-3 py-2 font-semibold text-accent">Total</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {matchupsWithTotals.map((m, i) => {
+                        const p1Won = m.p1_prize > m.p2_prize;
+                        const p2Won = m.p2_prize > m.p1_prize;
+                        return (
+                        <tr key={i} className="border-b border-border/30 last:border-0">
+                          <td className="px-3 sm:px-4 py-2 text-muted whitespace-nowrap">{m.tournament_name.replace(' Tournament', '').replace('Championship', 'Champ.')}</td>
+                          <td className={`px-2 sm:px-3 py-2 whitespace-nowrap ${p1Won ? "font-semibold text-primary" : "text-muted"}`}>{m.p1_golfer || <span className="italic">No pick</span>}</td>
+                          <td className={`px-2 py-2 text-right ${m.p1_prize > 0 ? (p1Won ? "text-accent font-semibold" : "") : "text-muted"}`}>{m.p1_prize > 0 ? formatMoney(m.p1_prize) : "-"}</td>
+                          <td className={`px-2 sm:px-3 py-2 text-right font-bold ${m.p1Cum >= m.p2Cum ? "text-accent" : ""}`}>{m.p1Cum > 0 ? formatMoney(m.p1Cum) : "-"}</td>
+                          <td className={`px-2 sm:px-3 py-2 whitespace-nowrap ${p2Won ? "font-semibold text-primary" : "text-muted"}`}>{m.p2_golfer || <span className="italic">No pick</span>}</td>
+                          <td className={`px-2 py-2 text-right ${m.p2_prize > 0 ? (p2Won ? "text-accent font-semibold" : "") : "text-muted"}`}>{m.p2_prize > 0 ? formatMoney(m.p2_prize) : "-"}</td>
+                          <td className={`px-2 sm:px-3 py-2 text-right font-bold ${m.p2Cum >= m.p1Cum ? "text-accent" : ""}`}>{m.p2Cum > 0 ? formatMoney(m.p2Cum) : "-"}</td>
+                        </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
                 </div>
               </>
-            )}
+              );
+            })()}
           </div>
         )}
 
