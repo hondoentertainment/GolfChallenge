@@ -15,7 +15,7 @@ interface Member { user_id: string; username: string; }
 interface Payout { position: number; prizeMoney: number; }
 interface Tournament { id: string; name: string; start_date: string; end_date: string; course: string; location: string; purse: number; payouts?: Payout[]; }
 interface Golfer { id: string; name: string; world_ranking: number; country: string; }
-interface PickDetail { id: string; user_id: string; username: string; golfer_name: string; tournament_name: string; prize_money: number; golfer_id: string; }
+interface PickDetail { id: string; user_id: string; username: string; golfer_name: string; tournament_name: string; prize_money: number; golfer_id: string; position: string | null; score: string | null; }
 interface PickOrderEntry { userId: string; username: string; position: number; deadline: string; }
 interface Standing { userId: string; username: string; totalPrizeMoney: number; pickCount: number; }
 interface ChatMsg { id: string; user_id: string; username: string; message: string; created_at: string; }
@@ -369,7 +369,12 @@ export default function LeaguePage() {
                 <div className="space-y-2">
                   {picks.map(p => (
                     <div key={p.id} className="flex items-center justify-between px-3 sm:px-4 py-3 rounded-lg bg-surface-alt">
-                      <div className="text-sm"><span className="font-medium">{p.username}</span><span className="mx-2 text-muted">&rarr;</span><span className="font-semibold text-primary">{p.golfer_name}</span></div>
+                      <div className="text-sm">
+                        <span className="font-medium">{p.username}</span>
+                        <span className="mx-2 text-muted">&rarr;</span>
+                        <span className="font-semibold text-primary">{p.golfer_name}</span>
+                        {p.position && <span className="ml-2 text-xs text-muted">({p.position})</span>}
+                      </div>
                       <div className="text-right">{p.prize_money > 0 ? <span className="text-accent font-bold">{formatMoney(p.prize_money)}</span> : <span className="text-muted text-xs">Awaiting</span>}</div>
                     </div>
                   ))}
@@ -519,7 +524,12 @@ export default function LeaguePage() {
                   <div className="space-y-1 mt-2">
                     {tp.map(p => (
                       <div key={p.id} className="flex items-center justify-between px-3 py-2 rounded bg-surface-alt text-sm">
-                        <div><span className="font-medium">{p.username}</span><span className="mx-2 text-muted">&rarr;</span><span className="text-primary font-medium">{p.golfer_name}</span></div>
+                        <div>
+                          <span className="font-medium">{p.username}</span>
+                          <span className="mx-2 text-muted">&rarr;</span>
+                          <span className="text-primary font-medium">{p.golfer_name}</span>
+                          {p.position && <span className="ml-1 text-xs text-muted">({p.position})</span>}
+                        </div>
                         <span className={`font-bold ${p.prize_money > 0 ? "text-accent" : "text-muted"}`}>{p.prize_money > 0 ? formatMoney(p.prize_money) : "TBD"}</span>
                       </div>
                     ))}

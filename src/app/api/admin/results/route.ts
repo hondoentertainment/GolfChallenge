@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getCurrentUser } from '@/lib/auth';
-import { updateTournamentResult, updateTournamentStatus, getTournaments, getTournament, getGolfers } from '@/lib/picks';
+import { updateTournamentResult, updateTournamentStatus, getTournaments, getTournament, getGolfers, reconcilePickPayouts } from '@/lib/picks';
 import { syncTournamentResults } from '@/lib/pga-data';
 import { notifyLeagueMembers } from '@/lib/notifications';
 import { recalculateBadges } from '@/lib/badges';
@@ -39,7 +39,14 @@ export async function POST(req: NextRequest) {
     // Auto-sync from ESPN
     if (body.action === 'sync') {
       const result = await syncTournamentResults(body.tournamentId);
-      return NextResponse.json(result);
+      const reconciled = await reconcilePickPayouts();
+      return NextResponse.json({ ...result, reconciled });
+    }
+
+    // Reconcile all picks (backfill missing payouts)
+    if (body.action === 'reconcile') {
+      const reconciled = await reconcilePickPayouts();
+      return NextResponse.json(reconciled);
     }
 
     // Manual result entry

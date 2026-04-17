@@ -1,7 +1,7 @@
 import { query, queryOne, execute } from './db';
 import { v4 as uuidv4 } from 'uuid';
 import { getLeagueMembers } from './leagues';
-import { getPickDeadline } from './pga-schedule';
+import { getPickDeadline, calculatePrizeMoney, parsePosition } from './pga-schedule';
 import { logAction } from './audit';
 
 export interface Pick {
@@ -20,6 +20,8 @@ export interface PickWithDetails extends Pick {
   golfer_name: string;
   tournament_name: string;
   prize_money: number;
+  position: string | null;
+  score: string | null;
 }
 
 export interface Tournament {
@@ -197,7 +199,9 @@ export async function getUserUsedGolfers(leagueId: string, userId: string): Prom
 export async function getLeaguePicks(leagueId: string, tournamentId?: string): Promise<PickWithDetails[]> {
   let sql = `
     SELECT p.*, u.username, g.name as golfer_name, t.name as tournament_name,
-      COALESCE(tr.prize_money, 0)::int as prize_money
+      COALESCE(tr.prize_money, 0)::int as prize_money,
+      tr.position,
+      tr.score
     FROM picks p
     JOIN users u ON p.user_id = u.id
     JOIN golfers g ON p.golfer_id = g.id
@@ -321,4 +325,67 @@ export async function getCombinedLeaderboard(userId: string): Promise<{ leagueId
   }
 
   return results;
+}
+
+// Reconcile payouts: for every pick in the current season, ensure a tournament_results
+// row exists and that prize_money is populated from the payout table when missing.
+// This covers cases where ESPN earnings were 0 or the golfer wasn't matched during sync.
+export async function reconcilePickPayouts(): Promise<{ created: number; updated: number }> {
+  // Find picks for completed tournaments that have no matching result or have $0 prize_money
+  // despite having a numeric finish position.
+  const orphanedPicks = await query<{
+    pick_id: string;
+    tournament_id: string;
+    golfer_id: string;
+    tournament_name: string;
+    purse: number;
+    result_id: string | null;
+    position: string | null;
+    prize_money: number | null;
+  }>(`
+    SELECT
+      p.id as pick_id,
+      p.tournament_id,
+      p.golfer_id,
+      t.name as tournament_name,
+      t.purse,
+      tr.id as result_id,
+      tr.position,
+      tr.prize_money::int as prize_money
+    FROM picks p
+    JOIN tournaments t ON t.id = p.tournament_id
+    LEFT JOIN tournament_results tr ON tr.tournament_id = p.tournament_id AND tr.golfer_id = p.golfer_id
+    WHERE t.season = $1
+      AND t.end_date < NOW()
+      AND p.is_missed = FALSE
+      AND (tr.id IS NULL OR (tr.prize_money = 0 AND tr.position IS NOT NULL AND tr.position NOT IN ('MC','CUT','WD','DQ','DNS','MDF','')))
+  `, ['2025-2026']);
+
+  let created = 0;
+  let updated = 0;
+
+  for (const row of orphanedPicks) {
+    const pos = row.position ? parsePosition(row.position) : 0;
+    const money = pos > 0 ? calculatePrizeMoney(row.purse, pos, row.tournament_name) : 0;
+
+    if (!row.result_id) {
+      // No result row at all — create one
+      await execute(
+        `INSERT INTO tournament_results (id, tournament_id, golfer_id, position, prize_money)
+         VALUES ($1, $2, $3, $4, $5)
+         ON CONFLICT(tournament_id, golfer_id) DO NOTHING`,
+        [uuidv4(), row.tournament_id, row.golfer_id, row.position || '', money]
+      );
+      created++;
+    } else if (money > 0) {
+      // Result exists with position but $0 — backfill the calculated payout
+      await execute(
+        `UPDATE tournament_results SET prize_money = $1 WHERE id = $2`,
+        [money, row.result_id]
+      );
+      updated++;
+    }
+  }
+
+  return { created, updated };
 }
