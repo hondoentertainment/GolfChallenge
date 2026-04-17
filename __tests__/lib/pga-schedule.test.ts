@@ -6,6 +6,8 @@ import {
   getPickDeadline,
   getPickDeadlineDisplay,
   PRIZE_PAYOUT_PERCENTAGES,
+  MASTERS_PAYOUT_PERCENTAGES,
+  getPayoutTable,
   parsePosition,
 } from '@/lib/pga-schedule';
 
@@ -291,5 +293,43 @@ describe('Prize Money Matching (position to payout)', () => {
   test('position beyond 65 earns zero', () => {
     const pos = parsePosition('70');
     expect(calculatePrizeMoney(mastersPurse, pos)).toBe(0);
+  });
+});
+
+describe('Masters Payout Structure', () => {
+  const mastersPurse = 22500000;
+  const mastersName = 'Masters Tournament';
+
+  test('winner receives 20% of the Masters purse', () => {
+    expect(calculatePrizeMoney(mastersPurse, 1, mastersName)).toBe(Math.round(mastersPurse * 0.20));
+    expect(calculatePrizeMoney(mastersPurse, 1, mastersName)).toBe(4500000);
+  });
+
+  test('winner still receives 18% for non-Masters events', () => {
+    expect(calculatePrizeMoney(20000000, 1, 'RBC Heritage')).toBe(3600000);
+    expect(calculatePrizeMoney(20000000, 1)).toBe(3600000);
+  });
+
+  test('getPayoutTable returns Masters table for Masters Tournament', () => {
+    expect(getPayoutTable('Masters Tournament')).toBe(MASTERS_PAYOUT_PERCENTAGES);
+  });
+
+  test('getPayoutTable returns standard table for every other event', () => {
+    expect(getPayoutTable('RBC Heritage')).toBe(PRIZE_PAYOUT_PERCENTAGES);
+    expect(getPayoutTable('U.S. Open')).toBe(PRIZE_PAYOUT_PERCENTAGES);
+    expect(getPayoutTable(undefined)).toBe(PRIZE_PAYOUT_PERCENTAGES);
+  });
+
+  test('Masters payouts table sums to less than 100% of purse', () => {
+    const total = Object.values(MASTERS_PAYOUT_PERCENTAGES).reduce((s, v) => s + v, 0);
+    expect(total).toBeLessThan(1);
+    expect(total).toBeGreaterThan(0.5);
+  });
+
+  test('getTournamentPayouts respects Masters structure', () => {
+    const mastersPayouts = getTournamentPayouts(mastersPurse, 'Masters Tournament');
+    const standardPayouts = getTournamentPayouts(mastersPurse);
+    expect(mastersPayouts[0].prizeMoney).toBe(4500000);
+    expect(standardPayouts[0].prizeMoney).toBe(4050000);
   });
 });

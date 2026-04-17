@@ -18,7 +18,8 @@ export const PGA_SCHEDULE_2025_2026 = [
 ];
 
 // Standard PGA Tour prize money payout percentages (% of purse)
-// Based on standard 2025-2026 PGA Tour payout structure for full-field events
+// Derived from the 2025 PGA Tour payout structure for full-field events
+// (applies to every event except the Masters, which publishes its own top-heavy structure below)
 export const PRIZE_PAYOUT_PERCENTAGES: Record<number, number> = {
   1: 0.18,
   2: 0.109,
@@ -83,6 +84,69 @@ export const PRIZE_PAYOUT_PERCENTAGES: Record<number, number> = {
   65: 0.002,
 };
 
+// Masters Tournament payout percentages (% of purse)
+// Augusta National publishes its own top-heavy structure: winner receives 20% (vs. 18% standard).
+// Derived from the 2025 Masters payout (last fully verified year): $4.2M winner on a $21M purse.
+export const MASTERS_PAYOUT_PERCENTAGES: Record<number, number> = {
+  1: 0.20,
+  2: 0.108,
+  3: 0.068,
+  4: 0.048,
+  5: 0.04,
+  6: 0.036,
+  7: 0.0335,
+  8: 0.031,
+  9: 0.029,
+  10: 0.027,
+  11: 0.025,
+  12: 0.023,
+  13: 0.021,
+  14: 0.019,
+  15: 0.018,
+  16: 0.017,
+  17: 0.016,
+  18: 0.015,
+  19: 0.014,
+  20: 0.013,
+  21: 0.012,
+  22: 0.0112,
+  23: 0.0104,
+  24: 0.0096,
+  25: 0.0088,
+  26: 0.008,
+  27: 0.0077,
+  28: 0.0074,
+  29: 0.0071,
+  30: 0.0068,
+  31: 0.0065,
+  32: 0.0062,
+  33: 0.0059,
+  34: 0.0057,
+  35: 0.0055,
+  36: 0.0053,
+  37: 0.0051,
+  38: 0.0049,
+  39: 0.0047,
+  40: 0.0045,
+  41: 0.0043,
+  42: 0.0041,
+  43: 0.0039,
+  44: 0.0037,
+  45: 0.0035,
+  46: 0.0033,
+  47: 0.0031,
+  48: 0.0029,
+  49: 0.0027,
+  50: 0.0026,
+};
+
+// Resolve the correct payout table for a tournament. The Masters uses its own
+// top-heavy structure; every other PGA Tour event uses the standard full-field table.
+export function getPayoutTable(tournamentName?: string): Record<number, number> {
+  if (tournamentName === 'Masters Tournament') return MASTERS_PAYOUT_PERCENTAGES;
+  return PRIZE_PAYOUT_PERCENTAGES;
+}
+
 // Parse a position string ("1", "T2", "T15", "MC", "CUT", "WD", "DQ") to a numeric position.
 // Tied positions (e.g. "T3") return the base number. Non-finishing positions return 0.
 export function parsePosition(posStr: string): number {
@@ -93,27 +157,29 @@ export function parsePosition(posStr: string): number {
   return isNaN(num) ? 0 : num;
 }
 
-// Calculate prize money for a given finish position
-export function calculatePrizeMoney(purse: number, position: number): number {
+// Calculate prize money for a given finish position. When tournamentName is provided,
+// uses that tournament's published structure (e.g. Masters); otherwise standard full-field.
+export function calculatePrizeMoney(purse: number, position: number, tournamentName?: string): number {
   if (position <= 0) return 0;
-  const pct = PRIZE_PAYOUT_PERCENTAGES[position];
+  const table = getPayoutTable(tournamentName);
+  const pct = table[position];
   if (pct) return Math.round(purse * pct);
-  // For positions 61-65, interpolate
-  if (position <= 65) {
+  // For positions 61-65, interpolate from the standard table (Masters only pays top 50)
+  if (position <= 65 && table === PRIZE_PAYOUT_PERCENTAGES) {
     const pct60 = PRIZE_PAYOUT_PERCENTAGES[60] ?? 0.0021;
     const pct65 = PRIZE_PAYOUT_PERCENTAGES[65] ?? 0.002;
     const frac = (position - 60) / 5;
     return Math.round(purse * (pct60 + frac * (pct65 - pct60)));
   }
-  // Missed cut / beyond 65
+  // Missed cut / beyond the paid positions
   return 0;
 }
 
-// Precomputed prize payouts for each tournament (positions 1-65)
-export function getTournamentPayouts(purse: number): { position: number; prizeMoney: number }[] {
+// Precomputed prize payouts for a tournament (positions 1 through the last paid position)
+export function getTournamentPayouts(purse: number, tournamentName?: string): { position: number; prizeMoney: number }[] {
   const payouts: { position: number; prizeMoney: number }[] = [];
   for (let pos = 1; pos <= 65; pos++) {
-    const money = calculatePrizeMoney(purse, pos);
+    const money = calculatePrizeMoney(purse, pos, tournamentName);
     if (money > 0) {
       payouts.push({ position: pos, prizeMoney: money });
     }

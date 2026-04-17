@@ -50,6 +50,7 @@ export async function POST(req: NextRequest) {
 
     const tournament = await getTournament(tournamentId);
     const purse = tournament?.purse ?? 0;
+    const tournamentName = tournament?.name;
 
     let updated = 0;
     for (const r of results) {
@@ -57,7 +58,7 @@ export async function POST(req: NextRequest) {
         const posStr = String(r.position);
         const prizeMoney = r.prizeMoney > 0
           ? r.prizeMoney
-          : calculatePrizeMoney(purse, parsePosition(posStr));
+          : calculatePrizeMoney(purse, parsePosition(posStr), tournamentName);
         await updateTournamentResult(tournamentId, r.golferId, posStr, prizeMoney, r.score);
         updated++;
       }

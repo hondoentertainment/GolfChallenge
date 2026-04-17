@@ -49,6 +49,7 @@ export async function syncTournamentResults(tournamentId: string): Promise<{ upd
 
   const tournament = await getTournament(tournamentId);
   const purse = tournament?.purse ?? 0;
+  const tournamentName = tournament?.name;
 
   let updated = 0;
   const errors: string[] = [];
@@ -76,7 +77,7 @@ export async function syncTournamentResults(tournamentId: string): Promise<{ upd
       const espnEarnings = competitor.earnings || 0;
       const prizeMoney = espnEarnings > 0
         ? espnEarnings
-        : calculatePrizeMoney(purse, parsePosition(position));
+        : calculatePrizeMoney(purse, parsePosition(position), tournamentName);
       const score = competitor.score?.displayValue || '';
 
       try {
