@@ -514,25 +514,53 @@ export default function LeaguePage() {
                 </tbody>
               </table>
             </div>
-            <h3 className="text-lg font-bold">Pick History</h3>
-            {tournaments.map(t => {
-              const tp = allPicks.filter(p => p.tournament_name === t.name);
-              if (!tp.length) return null;
+
+            {/* Per-player running totals with chosen golfers */}
+            <h3 className="text-lg font-bold">Player Breakdowns</h3>
+            {standings.map((s, rank) => {
+              const playerPicks = allPicks.filter(p => p.user_id === s.userId);
+              let runningTotal = 0;
+              const rows = tournaments.map(t => {
+                const pick = playerPicks.find(p => p.tournament_name === t.name);
+                if (pick) runningTotal += pick.prize_money;
+                return { tournament: t, pick, runningTotal };
+              });
               return (
-                <div key={t.id} className="bg-surface rounded-xl border border-border p-4 sm:p-5">
-                  <h4 className="font-semibold text-sm">{t.name} <span className="text-muted font-normal">({formatDate(t.start_date)} &middot; {formatPurse(t.purse)})</span></h4>
-                  <div className="space-y-1 mt-2">
-                    {tp.map(p => (
-                      <div key={p.id} className="flex items-center justify-between px-3 py-2 rounded bg-surface-alt text-sm">
-                        <div>
-                          <span className="font-medium">{p.username}</span>
-                          <span className="mx-2 text-muted">&rarr;</span>
-                          <span className="text-primary font-medium">{p.golfer_name}</span>
-                          {p.position && <span className="ml-1 text-xs text-muted">({p.position})</span>}
-                        </div>
-                        <span className={`font-bold ${p.prize_money > 0 ? "text-accent" : "text-muted"}`}>{p.prize_money > 0 ? formatMoney(p.prize_money) : "TBD"}</span>
-                      </div>
-                    ))}
+                <div key={s.userId} className={`bg-surface rounded-xl border ${s.userId === user?.id ? "border-primary" : "border-border"} overflow-hidden`}>
+                  <div className="bg-surface-alt px-4 sm:px-6 py-3 border-b border-border flex items-center justify-between">
+                    <div className="flex items-center gap-3">
+                      <span className={`w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold ${rank === 0 ? "bg-accent text-white" : "bg-surface text-muted border border-border"}`}>{rank + 1}</span>
+                      <span className="font-bold text-sm sm:text-base">{s.username}{s.userId === user?.id ? " (you)" : ""}</span>
+                    </div>
+                    <span className="font-bold text-accent">{formatMoney(s.totalPrizeMoney)}</span>
+                  </div>
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-xs sm:text-sm">
+                      <thead>
+                        <tr className="border-b border-border/50">
+                          <th className="text-left px-4 py-2 font-semibold text-muted">Tournament</th>
+                          <th className="text-left px-4 py-2 font-semibold text-muted">Golfer</th>
+                          <th className="text-center px-2 py-2 font-semibold text-muted hidden sm:table-cell">Pos</th>
+                          <th className="text-right px-4 py-2 font-semibold text-muted">Earned</th>
+                          <th className="text-right px-4 py-2 font-semibold text-muted">Total</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {rows.map(({ tournament: t, pick, runningTotal: rt }) => (
+                          <tr key={t.id} className="border-b border-border/20 last:border-0">
+                            <td className="px-4 py-2 text-muted whitespace-nowrap">{t.name.replace(' Tournament', '').replace('Championship', 'Champ.')}</td>
+                            <td className="px-4 py-2 font-medium text-primary whitespace-nowrap">
+                              {pick ? pick.golfer_name : <span className="text-muted italic">No pick</span>}
+                            </td>
+                            <td className="text-center px-2 py-2 text-muted hidden sm:table-cell">{pick?.position || "-"}</td>
+                            <td className={`px-4 py-2 text-right font-medium ${pick && pick.prize_money > 0 ? "text-accent" : "text-muted"}`}>
+                              {pick ? (pick.prize_money > 0 ? formatMoney(pick.prize_money) : "TBD") : "-"}
+                            </td>
+                            <td className="px-4 py-2 text-right font-bold">{rt > 0 ? formatMoney(rt) : "-"}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
                   </div>
                 </div>
               );
