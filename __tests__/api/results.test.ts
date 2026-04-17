@@ -79,7 +79,7 @@ describe('Admin Results API', () => {
     mockGetCurrentUser.mockResolvedValue({ id: '1', username: 'admin', is_admin: true });
     const req = new NextRequest('http://localhost/api/admin/results', {
       method: 'POST',
-      body: JSON.stringify({ tournamentId: 't-1' }), // missing results
+      body: JSON.stringify({ tournamentId: 't-1' }),
     });
     const res = await POST(req);
     expect(res.status).toBe(400);

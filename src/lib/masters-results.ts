@@ -1,8 +1,6 @@
 import { query, queryOne, execute } from './db';
 import { v4 as uuidv4 } from 'uuid';
 
-// 2026 Masters Tournament final results (confirmed top finishers).
-// Source: PGA Tour / CBS Sports / Golf News Net, April 12 2026.
 const MASTERS_2026_RESULTS: { name: string; position: string; score: string; prizeMoney: number }[] = [
   { name: "Rory McIlroy", position: "1", score: "-12", prizeMoney: 4500000 },
   { name: "Scottie Scheffler", position: "2", score: "-11", prizeMoney: 2430000 },
@@ -19,7 +17,7 @@ const MASTERS_2026_RESULTS: { name: string; position: string; score: string; pri
   { name: "Shane Lowry", position: "T13", score: "-6", prizeMoney: 427500 },
   { name: "Viktor Hovland", position: "T13", score: "-6", prizeMoney: 427500 },
   { name: "Patrick Cantlay", position: "T15", score: "-5", prizeMoney: 382500 },
-  { name: "Ludvig Åberg", position: "T15", score: "-5", prizeMoney: 382500 },
+  { name: "Ludvig \u00c5berg", position: "T15", score: "-5", prizeMoney: 382500 },
   { name: "Jordan Spieth", position: "T17", score: "-4", prizeMoney: 337500 },
   { name: "Sahith Theegala", position: "T17", score: "-4", prizeMoney: 337500 },
   { name: "Sungjae Im", position: "T19", score: "-3", prizeMoney: 281250 },
@@ -68,7 +66,6 @@ export async function seedMastersResults() {
   );
   if (Number(existingCount?.count) > 0) return;
 
-  // Mark the tournament as completed
   await execute(`UPDATE tournaments SET status = 'completed' WHERE id = $1`, [masters.id]);
 
   for (const r of MASTERS_2026_RESULTS) {
