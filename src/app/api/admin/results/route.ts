@@ -1,12 +1,13 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getCurrentUser } from '@/lib/auth';
-import { updateTournamentResult, updateTournamentStatus, getTournaments, getGolfers } from '@/lib/picks';
+import { updateTournamentResult, updateTournamentStatus, getTournaments, getTournament, getGolfers } from '@/lib/picks';
 import { syncTournamentResults } from '@/lib/pga-data';
 import { notifyLeagueMembers } from '@/lib/notifications';
 import { recalculateBadges } from '@/lib/badges';
 import { logAction } from '@/lib/audit';
 import { query } from '@/lib/db';
 import { ensureSeeded } from '@/lib/seed';
+import { calculatePrizeMoney, parsePosition } from '@/lib/pga-schedule';
 
 // GET: list tournaments and golfers for admin form
 export async function GET() {
@@ -47,10 +48,18 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'tournamentId and results array required' }, { status: 400 });
     }
 
+    const tournament = await getTournament(tournamentId);
+    const purse = tournament?.purse ?? 0;
+    const tournamentName = tournament?.name;
+
     let updated = 0;
     for (const r of results) {
       if (r.golferId && r.position !== undefined) {
-        await updateTournamentResult(tournamentId, r.golferId, String(r.position), r.prizeMoney || 0, r.score);
+        const posStr = String(r.position);
+        const prizeMoney = r.prizeMoney > 0
+          ? r.prizeMoney
+          : calculatePrizeMoney(purse, parsePosition(posStr), tournamentName);
+        await updateTournamentResult(tournamentId, r.golferId, posStr, prizeMoney, r.score);
         updated++;
       }
     }

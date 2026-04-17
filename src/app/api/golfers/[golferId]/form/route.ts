@@ -13,7 +13,7 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ golf
     );
     if (!golfer) return NextResponse.json({ error: 'Golfer not found' }, { status: 404 });
 
-    const recentResults = await query<{
+    const seasonResults = await query<{
       tournament_name: string;
       position: string;
       prize_money: number;
@@ -23,16 +23,20 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ golf
       SELECT t.name as tournament_name, tr.position, tr.prize_money::int, tr.score, t.start_date
       FROM tournament_results tr
       JOIN tournaments t ON tr.tournament_id = t.id
-      WHERE tr.golfer_id = $1
+      WHERE tr.golfer_id = $1 AND t.season = $2
       ORDER BY t.start_date DESC
-      LIMIT 5
-    `, [golferId]);
+    `, [golferId, '2025-2026']);
 
-    const totalEarnings = recentResults.reduce((s, r) => s + (r.prize_money || 0), 0);
-    const avgEarnings = recentResults.length > 0 ? Math.round(totalEarnings / recentResults.length) : 0;
+    const recentResults = seasonResults.slice(0, 5);
 
-    // Count top-10 finishes
-    const top10s = recentResults.filter(r => {
+    // Season-wide totals capture all prize money this golfer has attained
+    const seasonTotalEarnings = seasonResults.reduce((s, r) => s + (r.prize_money || 0), 0);
+    const seasonEvents = seasonResults.length;
+    const recentEarnings = recentResults.reduce((s, r) => s + (r.prize_money || 0), 0);
+    const avgEarnings = recentResults.length > 0 ? Math.round(recentEarnings / recentResults.length) : 0;
+
+    // Count top-10 finishes across the season
+    const top10s = seasonResults.filter(r => {
       const pos = parseInt(r.position?.replace('T', '') || '999');
       return pos <= 10;
     }).length;
@@ -40,7 +44,12 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ golf
     return NextResponse.json({
       golfer,
       recentResults,
-      stats: { totalEarnings, avgEarnings, top10s, events: recentResults.length },
+      stats: {
+        totalEarnings: seasonTotalEarnings,
+        avgEarnings,
+        top10s,
+        events: seasonEvents,
+      },
     });
   } catch {
     return NextResponse.json({ error: 'Failed to fetch form' }, { status: 500 });

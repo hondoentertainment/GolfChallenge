@@ -6,6 +6,9 @@ import {
   getPickDeadline,
   getPickDeadlineDisplay,
   PRIZE_PAYOUT_PERCENTAGES,
+  MASTERS_PAYOUT_PERCENTAGES,
+  getPayoutTable,
+  parsePosition,
 } from '@/lib/pga-schedule';
 
 describe('PGA Schedule', () => {
@@ -226,5 +229,107 @@ describe('Pick Deadlines', () => {
       expect(d.getTime()).toBeGreaterThan(0);
       expect(d.getTime()).toBeLessThan(new Date(t.startDate + 'T23:59:59Z').getTime());
     }
+  });
+});
+
+describe('parsePosition', () => {
+  test('parses simple numeric positions', () => {
+    expect(parsePosition('1')).toBe(1);
+    expect(parsePosition('10')).toBe(10);
+    expect(parsePosition('65')).toBe(65);
+  });
+
+  test('parses tied positions (T prefix)', () => {
+    expect(parsePosition('T2')).toBe(2);
+    expect(parsePosition('T15')).toBe(15);
+    expect(parsePosition('t3')).toBe(3);
+  });
+
+  test('returns 0 for missed cut and non-finishing positions', () => {
+    expect(parsePosition('MC')).toBe(0);
+    expect(parsePosition('CUT')).toBe(0);
+    expect(parsePosition('WD')).toBe(0);
+    expect(parsePosition('DQ')).toBe(0);
+    expect(parsePosition('DNS')).toBe(0);
+    expect(parsePosition('MDF')).toBe(0);
+  });
+
+  test('returns 0 for empty/invalid input', () => {
+    expect(parsePosition('')).toBe(0);
+    expect(parsePosition('abc')).toBe(0);
+  });
+
+  test('handles whitespace', () => {
+    expect(parsePosition(' T5 ')).toBe(5);
+    expect(parsePosition(' 1 ')).toBe(1);
+  });
+});
+
+describe('Prize Money Matching (position to payout)', () => {
+  const mastersPurse = 22500000;
+
+  test('winner prize money matches position 1', () => {
+    const pos = parsePosition('1');
+    expect(calculatePrizeMoney(mastersPurse, pos)).toBe(Math.round(mastersPurse * 0.18));
+  });
+
+  test('tied positions get same prize money as base position', () => {
+    const t5 = parsePosition('T5');
+    const plain5 = parsePosition('5');
+    expect(t5).toBe(plain5);
+    expect(calculatePrizeMoney(mastersPurse, t5)).toBe(calculatePrizeMoney(mastersPurse, plain5));
+  });
+
+  test('missed cut earns zero', () => {
+    const mc = parsePosition('MC');
+    expect(calculatePrizeMoney(mastersPurse, mc)).toBe(0);
+  });
+
+  test('withdrawal earns zero', () => {
+    const wd = parsePosition('WD');
+    expect(calculatePrizeMoney(mastersPurse, wd)).toBe(0);
+  });
+
+  test('position beyond 65 earns zero', () => {
+    const pos = parsePosition('70');
+    expect(calculatePrizeMoney(mastersPurse, pos)).toBe(0);
+  });
+});
+
+describe('Masters Payout Structure', () => {
+  const mastersPurse = 22500000;
+  const mastersName = 'Masters Tournament';
+
+  test('winner receives 20% of the Masters purse', () => {
+    expect(calculatePrizeMoney(mastersPurse, 1, mastersName)).toBe(Math.round(mastersPurse * 0.20));
+    expect(calculatePrizeMoney(mastersPurse, 1, mastersName)).toBe(4500000);
+  });
+
+  test('winner still receives 18% for non-Masters events', () => {
+    expect(calculatePrizeMoney(20000000, 1, 'RBC Heritage')).toBe(3600000);
+    expect(calculatePrizeMoney(20000000, 1)).toBe(3600000);
+  });
+
+  test('getPayoutTable returns Masters table for Masters Tournament', () => {
+    expect(getPayoutTable('Masters Tournament')).toBe(MASTERS_PAYOUT_PERCENTAGES);
+  });
+
+  test('getPayoutTable returns standard table for every other event', () => {
+    expect(getPayoutTable('RBC Heritage')).toBe(PRIZE_PAYOUT_PERCENTAGES);
+    expect(getPayoutTable('U.S. Open')).toBe(PRIZE_PAYOUT_PERCENTAGES);
+    expect(getPayoutTable(undefined)).toBe(PRIZE_PAYOUT_PERCENTAGES);
+  });
+
+  test('Masters payouts table sums to less than 100% of purse', () => {
+    const total = Object.values(MASTERS_PAYOUT_PERCENTAGES).reduce((s, v) => s + v, 0);
+    expect(total).toBeLessThan(1);
+    expect(total).toBeGreaterThan(0.5);
+  });
+
+  test('getTournamentPayouts respects Masters structure', () => {
+    const mastersPayouts = getTournamentPayouts(mastersPurse, 'Masters Tournament');
+    const standardPayouts = getTournamentPayouts(mastersPurse);
+    expect(mastersPayouts[0].prizeMoney).toBe(4500000);
+    expect(standardPayouts[0].prizeMoney).toBe(4050000);
   });
 });
