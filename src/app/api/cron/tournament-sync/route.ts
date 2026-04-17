@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { syncTournamentResults } from '@/lib/pga-data';
-import { getCurrentTournament, getTournaments } from '@/lib/picks';
+import { getCurrentTournament, getTournaments, reconcilePickPayouts } from '@/lib/picks';
 import { recalculateBadges } from '@/lib/badges';
 import { notifyLeagueMembers } from '@/lib/notifications';
 import { logAction } from '@/lib/audit';
@@ -41,7 +41,10 @@ export async function GET(req: NextRequest) {
       await logAction('auto_sync', `Synced ${result.updated} results for ${tournament.name}`);
     }
 
-    return NextResponse.json({ tournament: tournament.name, ...result });
+    // Backfill any picks still missing payouts
+    const reconciled = await reconcilePickPayouts();
+
+    return NextResponse.json({ tournament: tournament.name, ...result, reconciled });
   } catch (e) {
     return NextResponse.json({ error: String(e) }, { status: 500 });
   }
