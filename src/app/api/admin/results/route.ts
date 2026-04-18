@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getCurrentUser } from '@/lib/auth';
 import { updateTournamentResult, updateTournamentStatus, getTournaments, getTournament, getGolfers, reconcilePickPayouts } from '@/lib/picks';
-import { syncTournamentResults } from '@/lib/pga-data';
+import { syncTournamentResults, finalizeTournamentPayouts, finalizeRecentTournaments } from '@/lib/pga-data';
 import { notifyLeagueMembers } from '@/lib/notifications';
 import { recalculateBadges } from '@/lib/badges';
 import { logAction } from '@/lib/audit';
@@ -41,6 +41,19 @@ export async function POST(req: NextRequest) {
       const result = await syncTournamentResults(body.tournamentId);
       const reconciled = await reconcilePickPayouts();
       return NextResponse.json({ ...result, reconciled });
+    }
+
+    // Finalize a specific tournament (sync + reconcile + mark completed + notify)
+    if (body.action === 'finalize') {
+      if (!body.tournamentId) return NextResponse.json({ error: 'tournamentId required' }, { status: 400 });
+      const result = await finalizeTournamentPayouts(body.tournamentId);
+      return NextResponse.json(result);
+    }
+
+    // Finalize all recently ended tournaments that aren't marked completed
+    if (body.action === 'finalize-all') {
+      const result = await finalizeRecentTournaments();
+      return NextResponse.json(result);
     }
 
     // Reconcile all picks (backfill missing payouts)

@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getCurrentUser } from '@/lib/auth';
 import { isLeagueMember } from '@/lib/leagues';
-import { canUserPick, makePick, getLeaguePicks, getPickOrder, getUserUsedGolfers } from '@/lib/picks';
+import { canUserPick, makePick, getLeaguePicks, getPickOrder, getUserUsedGolfers, ensurePayoutsReconciled } from '@/lib/picks';
 import { ensureSeeded } from '@/lib/seed';
 
 export async function GET(req: NextRequest, { params }: { params: Promise<{ leagueId: string }> }) {
@@ -17,6 +17,8 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ leag
     if (!(await isLeagueMember(leagueId, user.id))) {
       return NextResponse.json({ error: 'Not a member of this league' }, { status: 403 });
     }
+
+    await ensurePayoutsReconciled();
 
     const { searchParams } = new URL(req.url);
     const tournamentId = searchParams.get('tournamentId') || undefined;
