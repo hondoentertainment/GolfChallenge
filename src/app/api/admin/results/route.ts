@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getCurrentUser } from '@/lib/auth';
 import { updateTournamentResult, updateTournamentStatus, getTournaments, getTournament, getGolfers, reconcilePickPayouts } from '@/lib/picks';
-import { syncTournamentResults, finalizeTournamentPayouts, finalizeRecentTournaments } from '@/lib/pga-data';
+import { syncTournamentResults, finalizeTournamentPayouts, finalizeRecentTournaments, populateHistoricalTournament } from '@/lib/pga-data';
 import { notifyLeagueMembers } from '@/lib/notifications';
 import { recalculateBadges } from '@/lib/badges';
 import { logAction } from '@/lib/audit';
@@ -53,6 +53,14 @@ export async function POST(req: NextRequest) {
     // Finalize all recently ended tournaments that aren't marked completed
     if (body.action === 'finalize-all') {
       const result = await finalizeRecentTournaments();
+      return NextResponse.json(result);
+    }
+
+    // Populate a completed tournament from ESPN historical data (pulls full field)
+    if (body.action === 'populate-historical') {
+      if (!body.tournamentId) return NextResponse.json({ error: 'tournamentId required' }, { status: 400 });
+      const result = await populateHistoricalTournament(body.tournamentId);
+      await reconcilePickPayouts();
       return NextResponse.json(result);
     }
 
