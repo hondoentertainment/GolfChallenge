@@ -1,9 +1,12 @@
 // Live PGA Tour data integration
 // Uses ESPN's public API for leaderboard data
 
-import { queryOne } from './db';
-import { updateTournamentResult, updateTournamentStatus, getGolfers, getTournament } from './picks';
+import { query, queryOne } from './db';
+import { updateTournamentResult, updateTournamentStatus, getGolfers, getTournament, getTournaments, reconcilePickPayouts } from './picks';
 import { calculatePrizeMoney, parsePosition } from './pga-schedule';
+import { recalculateBadges } from './badges';
+import { notifyLeagueMembers } from './notifications';
+import { logAction } from './audit';
 
 interface ESPNCompetitor {
   athlete: { displayName: string };
@@ -90,6 +93,69 @@ export async function syncTournamentResults(tournamentId: string): Promise<{ upd
   }
 
   return { updated, errors };
+}
+
+// Finalize payouts for a single tournament: sync ESPN one last time, reconcile
+// all picks, mark the tournament completed, notify leagues, and recalculate badges.
+export async function finalizeTournamentPayouts(tournamentId: string): Promise<{
+  synced: number;
+  reconciled: { created: number; updated: number };
+  notified: number;
+}> {
+  const syncResult = await syncTournamentResults(tournamentId);
+
+  await updateTournamentStatus(tournamentId, 'completed');
+
+  const reconciled = await reconcilePickPayouts();
+
+  const tournament = await getTournament(tournamentId);
+  const tournamentName = tournament?.name ?? 'Tournament';
+
+  const leagues = await query<{ league_id: string }>(
+    'SELECT DISTINCT league_id FROM picks WHERE tournament_id = $1',
+    [tournamentId]
+  );
+
+  for (const l of leagues) {
+    await notifyLeagueMembers(
+      l.league_id, 'system', 'results',
+      `${tournamentName} results finalized`,
+      `Final payouts for ${tournamentName} have been captured. Check your standings!`
+    );
+    await recalculateBadges(l.league_id);
+  }
+
+  await logAction('finalize_payouts', `Finalized ${tournamentName}: ${syncResult.updated} synced, ${reconciled.created + reconciled.updated} reconciled`);
+
+  return { synced: syncResult.updated, reconciled, notified: leagues.length };
+}
+
+// Find tournaments that ended recently but aren't marked completed, and finalize them.
+// This catches any tournament whose cron sync was missed or ESPN data arrived late.
+export async function finalizeRecentTournaments(): Promise<{
+  finalized: { tournamentName: string; synced: number; reconciled: { created: number; updated: number } }[];
+}> {
+  const pending = await query<{ id: string; name: string }>(
+    `SELECT id, name FROM tournaments
+     WHERE season = '2025-2026'
+       AND end_date < NOW()
+       AND end_date > NOW() - INTERVAL '14 days'
+       AND (status IS NULL OR status <> 'completed')
+     ORDER BY end_date ASC`
+  );
+
+  const finalized = [];
+
+  for (const t of pending) {
+    const result = await finalizeTournamentPayouts(t.id);
+    finalized.push({ tournamentName: t.name, synced: result.synced, reconciled: result.reconciled });
+  }
+
+  // Also reconcile picks for tournaments that ARE completed but may still
+  // have orphaned picks (e.g. from a golfer name mismatch during sync)
+  await reconcilePickPayouts();
+
+  return { finalized };
 }
 
 // Get the tournament ID that matches the current ESPN event
