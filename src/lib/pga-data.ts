@@ -265,6 +265,100 @@ export async function finalizeRecentTournaments(): Promise<{
   return { finalized };
 }
 
+// Populate every completed tournament in the season from ESPN historical data.
+// This is the brute-force "ensure every golfer is listed for every event" sweep
+// that runs at cold-start seed time and on-demand via admin. It's idempotent:
+// populateHistoricalTournament never overwrites audit-approved rows.
+export async function populateAllCompletedTournaments(): Promise<{
+  tournaments: { name: string; populated: number; skipped: number; errors: number }[];
+  totalPopulated: number;
+}> {
+  const completed = await query<{ id: string; name: string }>(
+    `SELECT id, name FROM tournaments
+     WHERE season = '2025-2026'
+       AND end_date < NOW()
+     ORDER BY end_date ASC`
+  );
+
+  const tournaments = [];
+  let totalPopulated = 0;
+
+  for (const t of completed) {
+    try {
+      const result = await populateHistoricalTournament(t.id);
+      tournaments.push({
+        name: t.name,
+        populated: result.populated,
+        skipped: result.skipped,
+        errors: result.errors.length,
+      });
+      totalPopulated += result.populated;
+    } catch (e) {
+      tournaments.push({
+        name: t.name,
+        populated: 0,
+        skipped: 0,
+        errors: 1,
+      });
+      console.warn(`[populate-all] ${t.name} failed:`, e);
+    }
+  }
+
+  return { tournaments, totalPopulated };
+}
+
+// Coverage report: for each tournament, count how many golfers have a result row.
+// Used by admin to verify that every event has a fully populated leaderboard.
+export async function getTournamentCoverage(): Promise<{
+  tournaments: {
+    id: string;
+    name: string;
+    status: string | null;
+    endDate: string;
+    resultRows: number;
+    pickedWithResult: number;
+    pickedWithoutResult: number;
+  }[];
+}> {
+  const rows = await query<{
+    id: string;
+    name: string;
+    status: string | null;
+    end_date: string;
+    result_rows: string;
+    picked_with_result: string;
+    picked_without_result: string;
+  }>(`
+    SELECT
+      t.id,
+      t.name,
+      t.status,
+      t.end_date,
+      (SELECT COUNT(*) FROM tournament_results tr WHERE tr.tournament_id = t.id) as result_rows,
+      (SELECT COUNT(DISTINCT p.golfer_id) FROM picks p
+       JOIN tournament_results tr ON tr.tournament_id = p.tournament_id AND tr.golfer_id = p.golfer_id
+       WHERE p.tournament_id = t.id) as picked_with_result,
+      (SELECT COUNT(DISTINCT p.golfer_id) FROM picks p
+       LEFT JOIN tournament_results tr ON tr.tournament_id = p.tournament_id AND tr.golfer_id = p.golfer_id
+       WHERE p.tournament_id = t.id AND tr.id IS NULL AND p.is_missed = FALSE) as picked_without_result
+    FROM tournaments t
+    WHERE t.season = '2025-2026'
+    ORDER BY t.start_date ASC
+  `);
+
+  return {
+    tournaments: rows.map(r => ({
+      id: r.id,
+      name: r.name,
+      status: r.status,
+      endDate: r.end_date,
+      resultRows: Number(r.result_rows),
+      pickedWithResult: Number(r.picked_with_result),
+      pickedWithoutResult: Number(r.picked_without_result),
+    })),
+  };
+}
+
 // Fetch a completed tournament's final leaderboard from ESPN's historical summary
 // endpoint and populate tournament_results for every competitor. Use this when
 // the event has dropped off the live scoreboard (e.g. syncing the Masters after

@@ -110,6 +110,42 @@ export default function AdminResultsPage() {
     finally { setFinalizingAll(false); }
   }
 
+  async function handlePopulateAll() {
+    setFinalizingAll(true); setError(""); setMessage("");
+    try {
+      const res = await fetch("/api/admin/results", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "populate-all" }),
+      });
+      const data = await res.json();
+      if (!res.ok) { setError(data.error); return; }
+      const summary = data.tournaments?.map((t: { name: string; populated: number; errors: number }) =>
+        `${t.name}: +${t.populated}${t.errors > 0 ? ` (${t.errors} errors)` : ''}`
+      ).join("; ") || `Total: ${data.totalPopulated}`;
+      setMessage(`Populated ${data.totalPopulated} rows across all completed tournaments. ${summary}`);
+    } catch { setError("Failed to populate all"); }
+    finally { setFinalizingAll(false); }
+  }
+
+  async function handleCoverage() {
+    setError(""); setMessage("");
+    try {
+      const res = await fetch("/api/admin/results", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "coverage" }),
+      });
+      const data = await res.json();
+      if (!res.ok) { setError(data.error); return; }
+      const summary = data.tournaments?.map((t: { name: string; resultRows: number; pickedWithResult: number; pickedWithoutResult: number; status: string }) => {
+        const flag = t.pickedWithoutResult > 0 ? ' \u26A0\uFE0F' : '';
+        return `${t.name}: ${t.resultRows} results, ${t.pickedWithResult}/${t.pickedWithResult + t.pickedWithoutResult} picks resolved${flag}`;
+      }).join(" | ");
+      setMessage(summary);
+    } catch { setError("Failed to fetch coverage"); }
+  }
+
   if (loading) return <div className="flex flex-1 items-center justify-center min-h-screen"><div className="text-muted">Loading...</div></div>;
 
   return (
@@ -123,6 +159,15 @@ export default function AdminResultsPage() {
 
       <div className="max-w-4xl mx-auto px-4 sm:px-6 py-8">
         <h1 className="text-2xl font-bold mb-6">Enter Tournament Results</h1>
+
+        <div className="bg-surface rounded-xl p-6 border border-border mb-6">
+          <h3 className="font-semibold mb-2">Season-Wide Actions</h3>
+          <p className="text-xs text-muted mb-3">Populate every completed tournament from ESPN historical data, then verify coverage. Audit-approved rows are never overwritten.</p>
+          <div className="flex flex-wrap gap-2">
+            <button onClick={handlePopulateAll} className="bg-accent hover:bg-accent-light text-primary-dark font-semibold px-4 py-2 rounded-lg text-sm">Populate All Completed</button>
+            <button onClick={handleCoverage} className="bg-surface-alt border border-border hover:border-primary font-medium px-4 py-2 rounded-lg text-sm">Coverage Report</button>
+          </div>
+        </div>
 
         <div className="bg-surface rounded-xl p-6 border border-border mb-6">
           <label className="block text-sm font-medium mb-2">Tournament</label>

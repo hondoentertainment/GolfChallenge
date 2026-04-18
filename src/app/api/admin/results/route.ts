@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getCurrentUser } from '@/lib/auth';
 import { updateTournamentResult, updateTournamentStatus, getTournaments, getTournament, getGolfers, reconcilePickPayouts } from '@/lib/picks';
-import { syncTournamentResults, finalizeTournamentPayouts, finalizeRecentTournaments, populateHistoricalTournament } from '@/lib/pga-data';
+import { syncTournamentResults, finalizeTournamentPayouts, finalizeRecentTournaments, populateHistoricalTournament, populateAllCompletedTournaments, getTournamentCoverage } from '@/lib/pga-data';
 import { notifyLeagueMembers } from '@/lib/notifications';
 import { recalculateBadges } from '@/lib/badges';
 import { logAction } from '@/lib/audit';
@@ -69,6 +69,21 @@ export async function POST(req: NextRequest) {
       const result = await populateHistoricalTournament(body.tournamentId);
       await reconcilePickPayouts();
       return NextResponse.json(result);
+    }
+
+    // Populate EVERY completed tournament in the season from ESPN historical data.
+    // Idempotent: audit-approved rows are never overwritten.
+    if (body.action === 'populate-all') {
+      const result = await populateAllCompletedTournaments();
+      await reconcilePickPayouts();
+      return NextResponse.json(result);
+    }
+
+    // Coverage report: how many golfers each tournament has populated results for,
+    // plus how many picks still have no matching result row.
+    if (body.action === 'coverage') {
+      const coverage = await getTournamentCoverage();
+      return NextResponse.json(coverage);
     }
 
     // Reconcile all picks (backfill missing payouts)
