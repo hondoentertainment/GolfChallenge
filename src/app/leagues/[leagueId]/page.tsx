@@ -7,6 +7,7 @@ import { useCountdown } from "@/hooks/useCountdown";
 import { useDarkMode } from "@/hooks/useDarkMode";
 import { buildChartData, getChartPath } from "@/hooks/useEarningsChart";
 import { usePushNotifications } from "@/hooks/usePushNotifications";
+import { useLiveLeaderboard } from "@/hooks/useLiveLeaderboard";
 import { getGolferPhotoUrl, getGolferInitials } from "@/lib/golfer-photos";
 
 interface User { id: string; username: string; is_admin?: boolean; }
@@ -93,6 +94,9 @@ export default function LeaguePage() {
 
   // Tournament results per golfer (actual earnings by event)
   const [tournamentResults, setTournamentResults] = useState<TournamentResults[]>([]);
+
+  // Live leaderboard from ESPN (client-side, updates every 60s during active events)
+  const liveLeaderboard = useLiveLeaderboard(tab === "pick");
 
   const loadPickData = useCallback(async (tid: string) => {
     const res = await fetch(`/api/leagues/${leagueId}/picks?tournamentId=${tid}`);
@@ -378,6 +382,35 @@ export default function LeaguePage() {
                       <div className="text-right">{p.prize_money > 0 ? <span className="text-accent font-bold">{formatMoney(p.prize_money)}</span> : <span className="text-muted text-xs">Awaiting</span>}</div>
                     </div>
                   ))}
+                </div>
+              </div>
+            )}
+
+            {/* Live Leaderboard */}
+            {liveLeaderboard.status === "in" && liveLeaderboard.competitors.length > 0 && (
+              <div className="bg-surface rounded-xl p-4 sm:p-6 border border-primary/30">
+                <div className="flex items-center justify-between mb-3">
+                  <h3 className="font-semibold text-sm sm:text-base flex items-center gap-2">
+                    <span className="w-2 h-2 rounded-full bg-red-500 animate-pulse"></span>
+                    Live Leaderboard
+                  </h3>
+                  <span className="text-xs text-muted">{liveLeaderboard.eventName}{liveLeaderboard.lastUpdated ? ` \u2022 ${liveLeaderboard.lastUpdated.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" })}` : ""}</span>
+                </div>
+                <div className="space-y-0 max-h-80 overflow-y-auto">
+                  <div className="grid grid-cols-[2.5rem_1fr_3rem_3.5rem] gap-x-2 text-xs font-semibold text-muted border-b border-border pb-1 mb-1 sticky top-0 bg-surface">
+                    <span>Pos</span><span>Player</span><span className="text-right">Scr</span><span className="text-right">Thru</span>
+                  </div>
+                  {liveLeaderboard.competitors.slice(0, 30).map((c, i) => {
+                    const isPicked = picks.some(p => p.golfer_name.toLowerCase() === c.name.toLowerCase());
+                    return (
+                      <div key={i} className={`grid grid-cols-[2.5rem_1fr_3rem_3.5rem] gap-x-2 text-xs sm:text-sm py-1 border-b border-border/20 ${isPicked ? "bg-primary/10 font-semibold" : ""}`}>
+                        <span className={i === 0 ? "text-accent font-bold" : "text-muted"}>{c.position || "-"}</span>
+                        <span className={`truncate ${isPicked ? "text-primary" : ""}`}>{c.name}</span>
+                        <span className="text-right font-medium">{c.score || "-"}</span>
+                        <span className="text-right text-muted">{c.thru}</span>
+                      </div>
+                    );
+                  })}
                 </div>
               </div>
             )}

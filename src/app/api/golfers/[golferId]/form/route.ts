@@ -2,7 +2,6 @@ import { NextRequest, NextResponse } from 'next/server';
 import { query, queryOne } from '@/lib/db';
 import { ensureSeeded } from '@/lib/seed';
 
-// Get a golfer's recent tournament form (last 5 results)
 export async function GET(req: NextRequest, { params }: { params: Promise<{ golferId: string }> }) {
   await ensureSeeded();
   try {
@@ -29,13 +28,11 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ golf
 
     const recentResults = seasonResults.slice(0, 5);
 
-    // Season-wide totals capture all prize money this golfer has attained
     const seasonTotalEarnings = seasonResults.reduce((s, r) => s + (r.prize_money || 0), 0);
     const seasonEvents = seasonResults.length;
     const recentEarnings = recentResults.reduce((s, r) => s + (r.prize_money || 0), 0);
     const avgEarnings = recentResults.length > 0 ? Math.round(recentEarnings / recentResults.length) : 0;
 
-    // Count top-10 finishes across the season
     const top10s = seasonResults.filter(r => {
       const pos = parseInt(r.position?.replace('T', '') || '999');
       return pos <= 10;
