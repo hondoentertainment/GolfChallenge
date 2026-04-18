@@ -5,6 +5,7 @@ jest.mock('@/lib/picks', () => ({
   updateTournamentResult: jest.fn(),
   updateTournamentStatus: jest.fn(),
   getTournaments: jest.fn(() => []),
+  getTournament: jest.fn(() => ({ id: 't-1', purse: 20000000 })),
   getGolfers: jest.fn(() => []),
 }));
 jest.mock('@/lib/pga-data', () => ({
@@ -78,7 +79,7 @@ describe('Admin Results API', () => {
     mockGetCurrentUser.mockResolvedValue({ id: '1', username: 'admin', is_admin: true });
     const req = new NextRequest('http://localhost/api/admin/results', {
       method: 'POST',
-      body: JSON.stringify({ tournamentId: 't-1' }), // missing results
+      body: JSON.stringify({ tournamentId: 't-1' }),
     });
     const res = await POST(req);
     expect(res.status).toBe(400);

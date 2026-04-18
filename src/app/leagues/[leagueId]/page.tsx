@@ -7,6 +7,7 @@ import { useCountdown } from "@/hooks/useCountdown";
 import { useDarkMode } from "@/hooks/useDarkMode";
 import { buildChartData, getChartPath } from "@/hooks/useEarningsChart";
 import { usePushNotifications } from "@/hooks/usePushNotifications";
+import { useLiveLeaderboard } from "@/hooks/useLiveLeaderboard";
 import { getGolferPhotoUrl, getGolferInitials } from "@/lib/golfer-photos";
 
 interface User { id: string; username: string; is_admin?: boolean; }
@@ -15,12 +16,14 @@ interface Member { user_id: string; username: string; }
 interface Payout { position: number; prizeMoney: number; }
 interface Tournament { id: string; name: string; start_date: string; end_date: string; course: string; location: string; purse: number; payouts?: Payout[]; }
 interface Golfer { id: string; name: string; world_ranking: number; country: string; }
-interface PickDetail { id: string; user_id: string; username: string; golfer_name: string; tournament_name: string; prize_money: number; golfer_id: string; }
+interface PickDetail { id: string; user_id: string; username: string; golfer_name: string; tournament_name: string; prize_money: number; golfer_id: string; position: string | null; score: string | null; }
 interface PickOrderEntry { userId: string; username: string; position: number; deadline: string; }
 interface Standing { userId: string; username: string; totalPrizeMoney: number; pickCount: number; }
 interface ChatMsg { id: string; user_id: string; username: string; message: string; created_at: string; }
 interface H2HMatchup { tournament_name: string; p1_golfer: string; p1_prize: number; p2_golfer: string; p2_prize: number; }
 interface HistoryPick { tournament_name: string; golfer_name: string; position: string | null; prize_money: number; score: string | null; purse: number; }
+interface TournamentResult { golferName: string; position: string; prizeMoney: number; score: string; }
+interface TournamentResults { tournamentId: string; tournamentName: string; results: TournamentResult[]; }
 
 function formatMoney(n: number): string { return n >= 1e6 ? "$" + (n / 1e6).toFixed(2) + "M" : "$" + n.toLocaleString("en-US"); }
 function formatPurse(n: number): string { return n >= 1e6 ? "$" + (n / 1e6).toFixed(0) + "M" : "$" + n.toLocaleString(); }
@@ -88,6 +91,12 @@ export default function LeaguePage() {
   // History state
   const [historyPlayer, setHistoryPlayer] = useState("");
   const [historyData, setHistoryData] = useState<{ picks: HistoryPick[]; totalEarnings: number } | null>(null);
+
+  // Tournament results per golfer (actual earnings by event)
+  const [tournamentResults, setTournamentResults] = useState<TournamentResults[]>([]);
+
+  // Live leaderboard from ESPN (client-side, updates every 60s during active events)
+  const liveLeaderboard = useLiveLeaderboard(tab === "pick");
 
   const loadPickData = useCallback(async (tid: string) => {
     const res = await fetch(`/api/leagues/${leagueId}/picks?tournamentId=${tid}`);
@@ -214,6 +223,12 @@ export default function LeaguePage() {
     const res = await fetch(`/api/leagues/${leagueId}/season`);
     if (res.ok) setSeasonData(await res.json());
   }
+  async function loadTournamentResults() {
+    try {
+      const res = await fetch("/api/tournaments/results");
+      if (res.ok) { const d = await res.json(); setTournamentResults(d.results || []); }
+    } catch { /* ignore */ }
+  }
   async function loadGolferForm(golferId: string) {
     setGolferFormLoading(true);
     try {
@@ -301,7 +316,7 @@ export default function LeaguePage() {
         {/* Tabs - scrollable on mobile */}
         <div className="flex gap-1 mb-6 bg-surface-alt rounded-lg p-1 overflow-x-auto">
           {tabs.map(t => (
-            <button key={t.key} onClick={() => { setTab(t.key); if (t.key === "history" && !historyData) loadHistory(); }}
+            <button key={t.key} onClick={() => { setTab(t.key); if (t.key === "history" && !historyData) loadHistory(); if (t.key === "payouts" && tournamentResults.length === 0) loadTournamentResults(); }}
               className={`px-3 sm:px-5 py-2 rounded-md text-xs sm:text-sm font-medium transition-colors whitespace-nowrap ${tab === t.key ? "bg-primary text-white" : "text-muted hover:text-foreground"}`}>
               {t.label}
             </button>
@@ -358,10 +373,44 @@ export default function LeaguePage() {
                 <div className="space-y-2">
                   {picks.map(p => (
                     <div key={p.id} className="flex items-center justify-between px-3 sm:px-4 py-3 rounded-lg bg-surface-alt">
-                      <div className="text-sm"><span className="font-medium">{p.username}</span><span className="mx-2 text-muted">&rarr;</span><span className="font-semibold text-primary">{p.golfer_name}</span></div>
+                      <div className="text-sm">
+                        <span className="font-medium">{p.username}</span>
+                        <span className="mx-2 text-muted">&rarr;</span>
+                        <span className="font-semibold text-primary">{p.golfer_name}</span>
+                        {p.position && <span className="ml-2 text-xs text-muted">({p.position})</span>}
+                      </div>
                       <div className="text-right">{p.prize_money > 0 ? <span className="text-accent font-bold">{formatMoney(p.prize_money)}</span> : <span className="text-muted text-xs">Awaiting</span>}</div>
                     </div>
                   ))}
+                </div>
+              </div>
+            )}
+
+            {/* Live Leaderboard */}
+            {liveLeaderboard.status === "in" && liveLeaderboard.competitors.length > 0 && (
+              <div className="bg-surface rounded-xl p-4 sm:p-6 border border-primary/30">
+                <div className="flex items-center justify-between mb-3">
+                  <h3 className="font-semibold text-sm sm:text-base flex items-center gap-2">
+                    <span className="w-2 h-2 rounded-full bg-red-500 animate-pulse"></span>
+                    Live Leaderboard
+                  </h3>
+                  <span className="text-xs text-muted">{liveLeaderboard.eventName}{liveLeaderboard.lastUpdated ? ` \u2022 ${liveLeaderboard.lastUpdated.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" })}` : ""}</span>
+                </div>
+                <div className="space-y-0 max-h-80 overflow-y-auto">
+                  <div className="grid grid-cols-[2.5rem_1fr_3rem_3.5rem] gap-x-2 text-xs font-semibold text-muted border-b border-border pb-1 mb-1 sticky top-0 bg-surface">
+                    <span>Pos</span><span>Player</span><span className="text-right">Scr</span><span className="text-right">Thru</span>
+                  </div>
+                  {liveLeaderboard.competitors.slice(0, 30).map((c, i) => {
+                    const isPicked = picks.some(p => p.golfer_name.toLowerCase() === c.name.toLowerCase());
+                    return (
+                      <div key={i} className={`grid grid-cols-[2.5rem_1fr_3rem_3.5rem] gap-x-2 text-xs sm:text-sm py-1 border-b border-border/20 ${isPicked ? "bg-primary/10 font-semibold" : ""}`}>
+                        <span className={i === 0 ? "text-accent font-bold" : "text-muted"}>{c.position || "-"}</span>
+                        <span className={`truncate ${isPicked ? "text-primary" : ""}`}>{c.name}</span>
+                        <span className="text-right font-medium">{c.score || "-"}</span>
+                        <span className="text-right text-muted">{c.thru}</span>
+                      </div>
+                    );
+                  })}
                 </div>
               </div>
             )}
@@ -498,20 +547,53 @@ export default function LeaguePage() {
                 </tbody>
               </table>
             </div>
-            <h3 className="text-lg font-bold">Pick History</h3>
-            {tournaments.map(t => {
-              const tp = allPicks.filter(p => p.tournament_name === t.name);
-              if (!tp.length) return null;
+
+            {/* Per-player running totals with chosen golfers */}
+            <h3 className="text-lg font-bold">Player Breakdowns</h3>
+            {standings.map((s, rank) => {
+              const playerPicks = allPicks.filter(p => p.user_id === s.userId);
+              let runningTotal = 0;
+              const rows = tournaments.map(t => {
+                const pick = playerPicks.find(p => p.tournament_name === t.name);
+                if (pick) runningTotal += pick.prize_money;
+                return { tournament: t, pick, runningTotal };
+              });
               return (
-                <div key={t.id} className="bg-surface rounded-xl border border-border p-4 sm:p-5">
-                  <h4 className="font-semibold text-sm">{t.name} <span className="text-muted font-normal">({formatDate(t.start_date)} &middot; {formatPurse(t.purse)})</span></h4>
-                  <div className="space-y-1 mt-2">
-                    {tp.map(p => (
-                      <div key={p.id} className="flex items-center justify-between px-3 py-2 rounded bg-surface-alt text-sm">
-                        <div><span className="font-medium">{p.username}</span><span className="mx-2 text-muted">&rarr;</span><span className="text-primary font-medium">{p.golfer_name}</span></div>
-                        <span className={`font-bold ${p.prize_money > 0 ? "text-accent" : "text-muted"}`}>{p.prize_money > 0 ? formatMoney(p.prize_money) : "TBD"}</span>
-                      </div>
-                    ))}
+                <div key={s.userId} className={`bg-surface rounded-xl border ${s.userId === user?.id ? "border-primary" : "border-border"} overflow-hidden`}>
+                  <div className="bg-surface-alt px-4 sm:px-6 py-3 border-b border-border flex items-center justify-between">
+                    <div className="flex items-center gap-3">
+                      <span className={`w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold ${rank === 0 ? "bg-accent text-white" : "bg-surface text-muted border border-border"}`}>{rank + 1}</span>
+                      <span className="font-bold text-sm sm:text-base">{s.username}{s.userId === user?.id ? " (you)" : ""}</span>
+                    </div>
+                    <span className="font-bold text-accent">{formatMoney(s.totalPrizeMoney)}</span>
+                  </div>
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-xs sm:text-sm">
+                      <thead>
+                        <tr className="border-b border-border/50">
+                          <th className="text-left px-4 py-2 font-semibold text-muted">Tournament</th>
+                          <th className="text-left px-4 py-2 font-semibold text-muted">Golfer</th>
+                          <th className="text-center px-2 py-2 font-semibold text-muted hidden sm:table-cell">Pos</th>
+                          <th className="text-right px-4 py-2 font-semibold text-muted">Earned</th>
+                          <th className="text-right px-4 py-2 font-semibold text-muted">Total</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {rows.map(({ tournament: t, pick, runningTotal: rt }) => (
+                          <tr key={t.id} className="border-b border-border/20 last:border-0">
+                            <td className="px-4 py-2 text-muted whitespace-nowrap">{t.name.replace(' Tournament', '').replace('Championship', 'Champ.')}</td>
+                            <td className="px-4 py-2 font-medium text-primary whitespace-nowrap">
+                              {pick ? pick.golfer_name : <span className="text-muted italic">No pick</span>}
+                            </td>
+                            <td className="text-center px-2 py-2 text-muted hidden sm:table-cell">{pick?.position || "-"}</td>
+                            <td className={`px-4 py-2 text-right font-medium ${pick && pick.prize_money > 0 ? "text-accent" : "text-muted"}`}>
+                              {pick ? (pick.prize_money > 0 ? formatMoney(pick.prize_money) : "TBD") : "-"}
+                            </td>
+                            <td className="px-4 py-2 text-right font-bold">{rt > 0 ? formatMoney(rt) : "-"}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
                   </div>
                 </div>
               );
@@ -575,11 +657,21 @@ export default function LeaguePage() {
                 <button onClick={loadH2H} disabled={!h2hPlayer1 || !h2hPlayer2} className="bg-primary text-white px-4 py-2 rounded-lg text-sm font-semibold disabled:opacity-50 w-full sm:w-auto">Compare</button>
               </div>
             </div>
-            {h2hData && (
+            {h2hData && (() => {
+              const p1Name = members.find(m => m.user_id === h2hPlayer1)?.username || "Player 1";
+              const p2Name = members.find(m => m.user_id === h2hPlayer2)?.username || "Player 2";
+              let p1Cum = 0;
+              let p2Cum = 0;
+              const matchupsWithTotals = h2hData.matchups.map(m => {
+                p1Cum += m.p1_prize;
+                p2Cum += m.p2_prize;
+                return { ...m, p1Cum, p2Cum };
+              });
+              return (
               <>
                 <div className="grid grid-cols-3 gap-3 text-center">
                   <div className="bg-surface rounded-xl p-4 border border-border">
-                    <p className="text-xs text-muted">{members.find(m => m.user_id === h2hPlayer1)?.username}</p>
+                    <p className="text-xs text-muted">{p1Name}</p>
                     <p className="text-2xl font-bold text-accent">{formatMoney(h2hData.p1Total)}</p>
                     <p className="text-xs text-muted">{h2hData.p1Wins} week{h2hData.p1Wins !== 1 ? "s" : ""} won</p>
                   </div>
@@ -587,24 +679,48 @@ export default function LeaguePage() {
                     <span className="text-xl font-bold text-muted">VS</span>
                   </div>
                   <div className="bg-surface rounded-xl p-4 border border-border">
-                    <p className="text-xs text-muted">{members.find(m => m.user_id === h2hPlayer2)?.username}</p>
+                    <p className="text-xs text-muted">{p2Name}</p>
                     <p className="text-2xl font-bold text-accent">{formatMoney(h2hData.p2Total)}</p>
                     <p className="text-xs text-muted">{h2hData.p2Wins} week{h2hData.p2Wins !== 1 ? "s" : ""} won</p>
                   </div>
                 </div>
-                <div className="space-y-2">
-                  {h2hData.matchups.map((m, i) => (
-                    <div key={i} className="bg-surface rounded-xl p-4 border border-border">
-                      <p className="text-xs text-muted font-medium mb-2">{m.tournament_name}</p>
-                      <div className="flex items-center justify-between text-sm">
-                        <div className={m.p1_prize >= m.p2_prize ? "font-bold text-primary" : "text-muted"}>{m.p1_golfer || "No pick"} {m.p1_prize > 0 && <span className="text-accent">{formatMoney(m.p1_prize)}</span>}</div>
-                        <div className={m.p2_prize >= m.p1_prize ? "font-bold text-primary text-right" : "text-muted text-right"}>{m.p2_golfer || "No pick"} {m.p2_prize > 0 && <span className="text-accent">{formatMoney(m.p2_prize)}</span>}</div>
-                      </div>
-                    </div>
-                  ))}
+
+                {/* H2H cumulative breakdown */}
+                <div className="bg-surface rounded-xl border border-border overflow-x-auto">
+                  <table className="w-full text-xs sm:text-sm">
+                    <thead>
+                      <tr className="bg-surface-alt border-b border-border">
+                        <th className="text-left px-3 sm:px-4 py-2 font-semibold text-muted">Tournament</th>
+                        <th className="text-left px-2 sm:px-3 py-2 font-semibold text-muted">{p1Name}</th>
+                        <th className="text-right px-2 py-2 font-semibold text-muted">Earned</th>
+                        <th className="text-right px-2 sm:px-3 py-2 font-semibold text-accent">Total</th>
+                        <th className="text-left px-2 sm:px-3 py-2 font-semibold text-muted">{p2Name}</th>
+                        <th className="text-right px-2 py-2 font-semibold text-muted">Earned</th>
+                        <th className="text-right px-2 sm:px-3 py-2 font-semibold text-accent">Total</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {matchupsWithTotals.map((m, i) => {
+                        const p1Won = m.p1_prize > m.p2_prize;
+                        const p2Won = m.p2_prize > m.p1_prize;
+                        return (
+                        <tr key={i} className="border-b border-border/30 last:border-0">
+                          <td className="px-3 sm:px-4 py-2 text-muted whitespace-nowrap">{m.tournament_name.replace(' Tournament', '').replace('Championship', 'Champ.')}</td>
+                          <td className={`px-2 sm:px-3 py-2 whitespace-nowrap ${p1Won ? "font-semibold text-primary" : "text-muted"}`}>{m.p1_golfer || <span className="italic">No pick</span>}</td>
+                          <td className={`px-2 py-2 text-right ${m.p1_prize > 0 ? (p1Won ? "text-accent font-semibold" : "") : "text-muted"}`}>{m.p1_prize > 0 ? formatMoney(m.p1_prize) : "-"}</td>
+                          <td className={`px-2 sm:px-3 py-2 text-right font-bold ${m.p1Cum >= m.p2Cum ? "text-accent" : ""}`}>{m.p1Cum > 0 ? formatMoney(m.p1Cum) : "-"}</td>
+                          <td className={`px-2 sm:px-3 py-2 whitespace-nowrap ${p2Won ? "font-semibold text-primary" : "text-muted"}`}>{m.p2_golfer || <span className="italic">No pick</span>}</td>
+                          <td className={`px-2 py-2 text-right ${m.p2_prize > 0 ? (p2Won ? "text-accent font-semibold" : "") : "text-muted"}`}>{m.p2_prize > 0 ? formatMoney(m.p2_prize) : "-"}</td>
+                          <td className={`px-2 sm:px-3 py-2 text-right font-bold ${m.p2Cum >= m.p1Cum ? "text-accent" : ""}`}>{m.p2Cum > 0 ? formatMoney(m.p2Cum) : "-"}</td>
+                        </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
                 </div>
               </>
-            )}
+              );
+            })()}
           </div>
         )}
 
@@ -657,25 +773,54 @@ export default function LeaguePage() {
         {/* PAYOUTS TAB */}
         {tab === "payouts" && (
           <div className="space-y-6">
-            <p className="text-xs sm:text-sm text-muted">Standard PGA Tour payout structure. Winner receives 18% of purse.</p>
-            {tournaments.map(t => (
-              <div key={t.id} className="bg-surface rounded-xl border border-border overflow-hidden">
-                <div className="bg-surface-alt px-4 sm:px-6 py-3 border-b border-border">
-                  <h3 className="font-bold text-sm sm:text-base">{t.name}</h3>
-                  <p className="text-xs sm:text-sm text-muted">{formatPurse(t.purse)} total purse</p>
-                </div>
-                <div className="px-4 sm:px-6 py-4">
-                  <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-x-6 gap-y-1 text-xs sm:text-sm">
-                    {(t.payouts || []).slice(0, 30).map(p => (
-                      <div key={p.position} className="flex justify-between py-1 border-b border-border/50">
-                        <span className={`${p.position <= 3 ? "font-bold" : ""} ${p.position === 1 ? "text-accent" : ""}`}>{ordinal(p.position)}</span>
-                        <span className={`font-medium ${p.position === 1 ? "text-accent font-bold" : ""}`}>{formatMoney(p.prizeMoney)}</span>
+            <p className="text-xs sm:text-sm text-muted">Earnings for each golfer by event. Completed tournaments show actual results; upcoming events show the projected payout structure.</p>
+            {tournaments.map(t => {
+              const trData = tournamentResults.find(r => r.tournamentId === t.id);
+              const hasResults = trData && trData.results.length > 0;
+              return (
+                <div key={t.id} className="bg-surface rounded-xl border border-border overflow-hidden">
+                  <div className="bg-surface-alt px-4 sm:px-6 py-3 border-b border-border flex flex-col sm:flex-row sm:items-center justify-between gap-1">
+                    <div>
+                      <h3 className="font-bold text-sm sm:text-base">{t.name}</h3>
+                      <p className="text-xs sm:text-sm text-muted">{formatPurse(t.purse)} total purse</p>
+                    </div>
+                    {hasResults && <span className="text-xs bg-success/10 text-success px-2 py-0.5 rounded-full font-medium">Results In</span>}
+                  </div>
+                  <div className="px-4 sm:px-6 py-4">
+                    {hasResults ? (
+                      <div className="space-y-0">
+                        <div className="grid grid-cols-[2rem_1fr_4rem_5rem] sm:grid-cols-[2.5rem_1fr_5rem_6rem] gap-x-2 text-xs font-semibold text-muted border-b border-border pb-2 mb-1">
+                          <span>Pos</span><span>Golfer</span><span className="text-right">Score</span><span className="text-right">Earnings</span>
+                        </div>
+                        {trData.results.slice(0, 30).map((r, i) => (
+                          <div key={i} className={`grid grid-cols-[2rem_1fr_4rem_5rem] sm:grid-cols-[2.5rem_1fr_5rem_6rem] gap-x-2 text-xs sm:text-sm py-1.5 border-b border-border/30 ${i < 3 ? "font-semibold" : ""}`}>
+                            <span className={i === 0 ? "text-accent font-bold" : "text-muted"}>{r.position || "-"}</span>
+                            <span className={`truncate ${i === 0 ? "text-accent" : ""}`}>{r.golferName}</span>
+                            <span className="text-right text-muted">{r.score || "-"}</span>
+                            <span className={`text-right font-medium ${r.prizeMoney > 0 ? (i === 0 ? "text-accent font-bold" : "text-foreground") : "text-muted"}`}>{r.prizeMoney > 0 ? formatMoney(r.prizeMoney) : "-"}</span>
+                          </div>
+                        ))}
+                        {trData.results.length > 30 && (
+                          <p className="text-xs text-muted pt-2">+ {trData.results.length - 30} more golfers</p>
+                        )}
                       </div>
-                    ))}
+                    ) : (
+                      <div>
+                        <p className="text-xs text-muted mb-3">Projected payout by position</p>
+                        <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-x-6 gap-y-1 text-xs sm:text-sm">
+                          {(t.payouts || []).slice(0, 30).map(p => (
+                            <div key={p.position} className="flex justify-between py-1 border-b border-border/50">
+                              <span className={`${p.position <= 3 ? "font-bold" : ""} ${p.position === 1 ? "text-accent" : ""}`}>{ordinal(p.position)}</span>
+                              <span className={`font-medium ${p.position === 1 ? "text-accent font-bold" : ""}`}>{formatMoney(p.prizeMoney)}</span>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
                   </div>
                 </div>
-              </div>
-            ))}
+              );
+            })}
           </div>
         )}
 

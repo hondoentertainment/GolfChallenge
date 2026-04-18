@@ -2,7 +2,8 @@
 // Uses ESPN's public API for leaderboard data
 
 import { queryOne } from './db';
-import { updateTournamentResult, updateTournamentStatus, getGolfers } from './picks';
+import { updateTournamentResult, updateTournamentStatus, getGolfers, getTournament } from './picks';
+import { calculatePrizeMoney, parsePosition } from './pga-schedule';
 
 interface ESPNCompetitor {
   athlete: { displayName: string };
@@ -46,6 +47,10 @@ export async function syncTournamentResults(tournamentId: string): Promise<{ upd
   const golfers = await getGolfers();
   const golferMap = new Map(golfers.map(g => [g.name.toLowerCase(), g.id]));
 
+  const tournament = await getTournament(tournamentId);
+  const purse = tournament?.purse ?? 0;
+  const tournamentName = tournament?.name;
+
   let updated = 0;
   const errors: string[] = [];
 
@@ -69,11 +74,14 @@ export async function syncTournamentResults(tournamentId: string): Promise<{ upd
       if (!golferId) continue;
 
       const position = competitor.status?.position?.displayName || '';
-      const earnings = competitor.earnings || 0;
+      const espnEarnings = competitor.earnings || 0;
+      const prizeMoney = espnEarnings > 0
+        ? espnEarnings
+        : calculatePrizeMoney(purse, parsePosition(position), tournamentName);
       const score = competitor.score?.displayValue || '';
 
       try {
-        await updateTournamentResult(tournamentId, golferId, position, earnings, score);
+        await updateTournamentResult(tournamentId, golferId, position, prizeMoney, score);
         updated++;
       } catch (e) {
         errors.push(`Failed to update ${name}: ${e instanceof Error ? e.message : 'unknown'}`);
