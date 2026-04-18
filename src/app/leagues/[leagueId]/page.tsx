@@ -326,6 +326,49 @@ export default function LeaguePage() {
         {/* PICK TAB */}
         {tab === "pick" && (
           <div className="space-y-6">
+            {/* My Picks summary — shows every golfer the current player selected with payouts */}
+            {user && (() => {
+              const myPicks = allPicks.filter(p => p.user_id === user.id);
+              if (myPicks.length === 0) return null;
+              const myTotal = myPicks.reduce((s, p) => s + p.prize_money, 0);
+              return (
+                <div className="bg-surface rounded-xl border border-border overflow-hidden">
+                  <div className="bg-surface-alt px-4 sm:px-6 py-3 border-b border-border flex items-center justify-between">
+                    <h3 className="font-semibold text-sm sm:text-base">My Picks &amp; Payouts</h3>
+                    <span className="font-bold text-accent">{formatMoney(myTotal)}</span>
+                  </div>
+                  <div className="divide-y divide-border/30">
+                    {tournaments.map(t => {
+                      const pick = myPicks.find(p => p.tournament_name === t.name);
+                      const isPast = new Date(t.end_date) < new Date();
+                      const isCurrent = currentTournament?.id === t.id;
+                      return (
+                        <div key={t.id} className={`flex items-center justify-between px-4 sm:px-6 py-2.5 text-sm ${isCurrent ? "bg-primary/5" : ""}`}>
+                          <div className="flex items-center gap-3 min-w-0">
+                            <span className={`text-xs w-16 shrink-0 ${isPast ? "text-muted" : isCurrent ? "text-primary font-medium" : "text-muted"}`}>
+                              {isCurrent ? "Live" : formatDate(t.start_date)}
+                            </span>
+                            <span className="text-muted truncate hidden sm:inline">{t.name.replace(' Tournament', '').replace('Championship', 'Champ.')}</span>
+                            {pick ? (
+                              <span className="font-medium text-primary truncate">{pick.golfer_name}</span>
+                            ) : (
+                              <span className="text-muted italic">{isPast ? "No pick" : "Upcoming"}</span>
+                            )}
+                          </div>
+                          <div className="flex items-center gap-2 shrink-0">
+                            {pick?.position && <span className="text-xs text-muted">({pick.position})</span>}
+                            <span className={`font-semibold ${pick && pick.prize_money > 0 ? "text-accent" : "text-muted"}`}>
+                              {pick ? (pick.prize_money > 0 ? formatMoney(pick.prize_money) : isPast ? "$0" : "TBD") : "-"}
+                            </span>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              );
+            })()}
+
             <div className="bg-surface rounded-xl p-4 sm:p-6 border border-border">
               <label className="block text-sm font-medium mb-2">Tournament</label>
               <select value={selectedTournament} onChange={e => handleTournamentChange(e.target.value)}
