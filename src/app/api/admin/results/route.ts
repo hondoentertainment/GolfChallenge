@@ -39,8 +39,15 @@ export async function POST(req: NextRequest) {
     // Auto-sync from ESPN
     if (body.action === 'sync') {
       const result = await syncTournamentResults(body.tournamentId);
+      // Fix 5: if ESPN live scoreboard is empty for this tournament, fall back
+      // to historical fetch so admin always gets a populated leaderboard.
+      let historicalPopulated = 0;
+      if (!result.espnHadEvent || result.updated === 0) {
+        const hist = await populateHistoricalTournament(body.tournamentId);
+        historicalPopulated = hist.populated;
+      }
       const reconciled = await reconcilePickPayouts();
-      return NextResponse.json({ ...result, reconciled });
+      return NextResponse.json({ ...result, historicalPopulated, reconciled });
     }
 
     // Finalize a specific tournament (sync + reconcile + mark completed + notify)
