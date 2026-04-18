@@ -330,7 +330,36 @@ export async function getCombinedLeaderboard(userId: string): Promise<{ leagueId
 // Reconcile payouts: for every pick in the current season, ensure a tournament_results
 // row exists and that prize_money is populated from the payout table when missing.
 // This covers cases where ESPN earnings were 0 or the golfer wasn't matched during sync.
-export async function reconcilePickPayouts(): Promise<{ created: number; updated: number }> {
+export async function reconcilePickPayouts(): Promise<{ created: number; updated: number; historicalFetched: number }> {
+  // Fix 4: before backfilling from the payout table, identify any completed
+  // tournament that has picks with NO result row at all — those need the
+  // historical ESPN fetch first (the table-calculated fallback would give
+  // everyone $0 without a position). We dynamically import to avoid a module
+  // load cycle with pga-data.ts.
+  const tournamentsNeedingHistorical = await query<{ tournament_id: string; tournament_name: string }>(`
+    SELECT DISTINCT t.id as tournament_id, t.name as tournament_name
+    FROM picks p
+    JOIN tournaments t ON t.id = p.tournament_id
+    LEFT JOIN tournament_results tr ON tr.tournament_id = p.tournament_id AND tr.golfer_id = p.golfer_id
+    WHERE t.season = $1
+      AND t.end_date < NOW()
+      AND p.is_missed = FALSE
+      AND tr.id IS NULL
+  `, ['2025-2026']);
+
+  let historicalFetched = 0;
+  if (tournamentsNeedingHistorical.length > 0) {
+    const { populateHistoricalTournament } = await import('./pga-data');
+    for (const t of tournamentsNeedingHistorical) {
+      try {
+        const result = await populateHistoricalTournament(t.tournament_id);
+        historicalFetched += result.populated;
+      } catch {
+        // Non-fatal — the table-calculated fallback below will still run
+      }
+    }
+  }
+
   // Find picks for completed tournaments that have no matching result or have $0 prize_money
   // despite having a numeric finish position.
   const orphanedPicks = await query<{
@@ -387,7 +416,7 @@ export async function reconcilePickPayouts(): Promise<{ created: number; updated
     }
   }
 
-  return { created, updated };
+  return { created, updated, historicalFetched };
 }
 
 // Throttled reconciliation that runs at most once per 5 minutes per server instance.
