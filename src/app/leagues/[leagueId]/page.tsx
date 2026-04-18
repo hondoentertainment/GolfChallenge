@@ -326,6 +326,49 @@ export default function LeaguePage() {
         {/* PICK TAB */}
         {tab === "pick" && (
           <div className="space-y-6">
+            {/* My Picks summary — shows every golfer the current player selected with payouts */}
+            {user && (() => {
+              const myPicks = allPicks.filter(p => p.user_id === user.id);
+              if (myPicks.length === 0) return null;
+              const myTotal = myPicks.reduce((s, p) => s + p.prize_money, 0);
+              return (
+                <div className="bg-surface rounded-xl border border-border overflow-hidden">
+                  <div className="bg-surface-alt px-4 sm:px-6 py-3 border-b border-border flex items-center justify-between">
+                    <h3 className="font-semibold text-sm sm:text-base">My Picks &amp; Payouts</h3>
+                    <span className="font-bold text-accent">{formatMoney(myTotal)}</span>
+                  </div>
+                  <div className="divide-y divide-border/30">
+                    {tournaments.map(t => {
+                      const pick = myPicks.find(p => p.tournament_name === t.name);
+                      const isPast = new Date(t.end_date) < new Date();
+                      const isCurrent = currentTournament?.id === t.id;
+                      return (
+                        <div key={t.id} className={`flex items-center justify-between px-4 sm:px-6 py-2.5 text-sm ${isCurrent ? "bg-primary/5" : ""}`}>
+                          <div className="flex items-center gap-3 min-w-0">
+                            <span className={`text-xs w-16 shrink-0 ${isPast ? "text-muted" : isCurrent ? "text-primary font-medium" : "text-muted"}`}>
+                              {isCurrent ? "Live" : formatDate(t.start_date)}
+                            </span>
+                            <span className="text-muted truncate hidden sm:inline">{t.name.replace(' Tournament', '').replace('Championship', 'Champ.')}</span>
+                            {pick ? (
+                              <span className="font-medium text-primary truncate">{pick.golfer_name}</span>
+                            ) : (
+                              <span className="text-muted italic">{isPast ? "No pick" : "Upcoming"}</span>
+                            )}
+                          </div>
+                          <div className="flex items-center gap-2 shrink-0">
+                            {pick?.position && <span className="text-xs text-muted">({pick.position})</span>}
+                            <span className={`font-semibold ${pick && pick.prize_money > 0 ? "text-accent" : "text-muted"}`}>
+                              {pick ? (pick.prize_money > 0 ? formatMoney(pick.prize_money) : isPast ? "$0" : "TBD") : "-"}
+                            </span>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              );
+            })()}
+
             <div className="bg-surface rounded-xl p-4 sm:p-6 border border-border">
               <label className="block text-sm font-medium mb-2">Tournament</label>
               <select value={selectedTournament} onChange={e => handleTournamentChange(e.target.value)}
@@ -512,36 +555,49 @@ export default function LeaguePage() {
         {/* STANDINGS TAB */}
         {tab === "standings" && (
           <div className="space-y-6">
+            {/* Comprehensive earnings table: one row per player, one column per tournament */}
             <div className="bg-surface rounded-xl border border-border overflow-x-auto">
-              <table className="w-full">
-                <thead><tr className="bg-surface-alt border-b border-border">
-                  <th className="text-left px-4 sm:px-6 py-3 text-xs sm:text-sm font-semibold text-muted">Rank</th>
-                  <th className="text-left px-4 sm:px-6 py-3 text-xs sm:text-sm font-semibold text-muted">Player</th>
-                  <th className="text-right px-4 sm:px-6 py-3 text-xs sm:text-sm font-semibold text-muted">Picks</th>
-                  <th className="px-4 sm:px-6 py-3 text-xs sm:text-sm font-semibold text-muted hidden sm:table-cell">Trend</th>
-                  <th className="text-right px-4 sm:px-6 py-3 text-xs sm:text-sm font-semibold text-muted">Earnings</th>
-                </tr></thead>
+              <table className="w-full text-xs sm:text-sm">
+                <thead>
+                  <tr className="bg-surface-alt border-b border-border">
+                    <th className="text-left px-3 sm:px-4 py-3 font-semibold text-muted sticky left-0 bg-surface-alt z-10">#</th>
+                    <th className="text-left px-3 sm:px-4 py-3 font-semibold text-muted sticky left-8 bg-surface-alt z-10">Player</th>
+                    {tournaments.map(t => (
+                      <th key={t.id} className="text-center px-2 sm:px-3 py-3 font-semibold text-muted whitespace-nowrap min-w-[7rem]">
+                        <div>{t.name.replace(' Tournament', '').replace('Championship', 'Champ.').replace('Charles Schwab ', 'Schwab ')}</div>
+                      </th>
+                    ))}
+                    <th className="text-right px-3 sm:px-4 py-3 font-semibold text-muted">Total</th>
+                  </tr>
+                </thead>
                 <tbody>
-                  {standings.map((s, i) => {
-                    const we = weeklyEarnings[s.userId] || [];
-                    const maxWe = Math.max(...we, 1);
+                  {standings.map((s, rank) => {
+                    const playerPicks = allPicks.filter(p => p.user_id === s.userId);
+                    const isMe = s.userId === user?.id;
                     return (
-                    <tr key={s.userId} className={`border-b border-border last:border-0 ${s.userId === user?.id ? "bg-primary/5" : ""}`}>
-                      <td className="px-4 sm:px-6 py-4"><span className={`font-bold text-lg ${i === 0 ? "text-accent" : ""}`}>{i + 1}</span></td>
-                      <td className="px-4 sm:px-6 py-4 font-medium text-sm">{s.username}{s.userId === user?.id ? " (you)" : ""}</td>
-                      <td className="px-4 sm:px-6 py-4 text-right text-muted text-sm">{s.pickCount}/{tournaments.length}</td>
-                      <td className="px-4 sm:px-6 py-3 hidden sm:table-cell">
-                        {we.length > 0 && (
-                          <svg viewBox="0 0 100 24" className="w-24 h-6">
-                            {we.map((v, j) => (
-                              <rect key={j} x={j * (100 / we.length)} y={24 - (v / maxWe) * 22} width={Math.max(100 / we.length - 1, 2)} height={Math.max((v / maxWe) * 22, 1)}
-                                fill={v > 0 ? "var(--accent)" : "var(--border)"} rx="1"/>
-                            ))}
-                          </svg>
-                        )}
-                      </td>
-                      <td className="px-4 sm:px-6 py-4 text-right font-bold text-accent">{formatMoney(s.totalPrizeMoney)}</td>
-                    </tr>
+                      <tr key={s.userId} className={`border-b border-border last:border-0 ${isMe ? "bg-primary/5" : ""}`}>
+                        <td className={`px-3 sm:px-4 py-3 font-bold sticky left-0 z-10 ${isMe ? "bg-primary/5" : "bg-surface"} ${rank === 0 ? "text-accent" : ""}`}>{rank + 1}</td>
+                        <td className={`px-3 sm:px-4 py-3 font-medium sticky left-8 z-10 whitespace-nowrap ${isMe ? "bg-primary/5" : "bg-surface"}`}>{s.username}{isMe ? " (you)" : ""}</td>
+                        {tournaments.map(t => {
+                          const pick = playerPicks.find(p => p.tournament_name === t.name);
+                          return (
+                            <td key={t.id} className="px-2 sm:px-3 py-3 text-center">
+                              {pick ? (
+                                <div>
+                                  <div className={`font-medium truncate max-w-[6rem] mx-auto ${pick.prize_money > 0 ? "text-primary" : "text-muted"}`}>{pick.golfer_name.split(' ').pop()}</div>
+                                  <div className={`text-xs ${pick.prize_money > 0 ? "text-accent font-semibold" : "text-muted"}`}>
+                                    {pick.position && <span className="mr-1">({pick.position})</span>}
+                                    {pick.prize_money > 0 ? formatMoney(pick.prize_money) : "TBD"}
+                                  </div>
+                                </div>
+                              ) : (
+                                <span className="text-muted">-</span>
+                              )}
+                            </td>
+                          );
+                        })}
+                        <td className="px-3 sm:px-4 py-3 text-right font-bold text-accent whitespace-nowrap">{formatMoney(s.totalPrizeMoney)}</td>
+                      </tr>
                     );
                   })}
                 </tbody>
@@ -549,7 +605,7 @@ export default function LeaguePage() {
             </div>
 
             {/* Per-player running totals with chosen golfers */}
-            <h3 className="text-lg font-bold">Player Breakdowns</h3>
+            <h3 className="text-lg font-bold">Running Totals</h3>
             {standings.map((s, rank) => {
               const playerPicks = allPicks.filter(p => p.user_id === s.userId);
               let runningTotal = 0;
