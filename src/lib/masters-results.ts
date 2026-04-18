@@ -1,8 +1,11 @@
-import { query, queryOne, execute } from './db';
+import { queryOne, execute } from './db';
 import { v4 as uuidv4 } from 'uuid';
 
-// 2026 Masters Tournament final results (verified from PGA Tour, CBS Sports, SI).
-// Purse: $22.5M. Rory McIlroy won his second consecutive green jacket.
+// 2026 Masters Tournament final results. Purse: $22.5M.
+// Rory McIlroy won his second consecutive green jacket, defeating Scheffler by one shot.
+// Sources: PGA Tour, CBS Sports, SI, Golf Channel, Heavy Sports, ESPN (verified April 12, 2026).
+// Notable non-participants: Tiger Woods (health), Phil Mickelson (withdrew April 2),
+// Tom Kim and Sahith Theegala (did not qualify).
 const MASTERS_2026_RESULTS: { name: string; position: string; score: string; prizeMoney: number }[] = [
   { name: "Rory McIlroy", position: "1", score: "-12", prizeMoney: 4500000 },
   { name: "Scottie Scheffler", position: "2", score: "-11", prizeMoney: 2430000 },
@@ -15,28 +18,24 @@ const MASTERS_2026_RESULTS: { name: string; position: string; score: string; pri
   { name: "Max Homa", position: "T9", score: "-8", prizeMoney: 630000 },
   { name: "Xander Schauffele", position: "T9", score: "-8", prizeMoney: 630000 },
   { name: "Jake Knapp", position: "11", score: "-7", prizeMoney: 562500 },
-  { name: "Tommy Fleetwood", position: "T12", score: "-6", prizeMoney: 427500 },
-  { name: "Hideki Matsuyama", position: "T12", score: "-6", prizeMoney: 427500 },
-  { name: "Patrick Cantlay", position: "T12", score: "-6", prizeMoney: 427500 },
-  { name: "Jordan Spieth", position: "T12", score: "-6", prizeMoney: 427500 },
-  { name: "Sahith Theegala", position: "T12", score: "-6", prizeMoney: 427500 },
-  { name: "Jason Day", position: "T12", score: "-6", prizeMoney: 427500 },
-  { name: "Viktor Hovland", position: "T18", score: "-5", prizeMoney: 315000 },
-  { name: "Sungjae Im", position: "T18", score: "-5", prizeMoney: 315000 },
-  { name: "Tom Kim", position: "T18", score: "-5", prizeMoney: 315000 },
-  { name: "Ludvig \u00c5berg", position: "T21", score: "-4", prizeMoney: 252000 },
-  { name: "Matt Fitzpatrick", position: "T21", score: "-4", prizeMoney: 252000 },
-  { name: "Tony Finau", position: "T23", score: "-3", prizeMoney: 213750 },
-  { name: "Brian Harman", position: "T23", score: "-3", prizeMoney: 213750 },
-  { name: "Adam Scott", position: "T25", score: "-2", prizeMoney: 180000 },
-  { name: "Bryson DeChambeau", position: "T25", score: "-2", prizeMoney: 180000 },
-  { name: "Jon Rahm", position: "T25", score: "-2", prizeMoney: 180000 },
-  { name: "Justin Thomas", position: "T28", score: "-1", prizeMoney: 146250 },
-  { name: "Dustin Johnson", position: "T28", score: "-1", prizeMoney: 146250 },
-  { name: "Corey Conners", position: "T28", score: "-1", prizeMoney: 146250 },
-  { name: "Shane Lowry", position: "T31", score: "E", prizeMoney: 123750 },
-  { name: "Tiger Woods", position: "T31", score: "E", prizeMoney: 123750 },
-  { name: "Phil Mickelson", position: "T31", score: "E", prizeMoney: 123750 },
+  { name: "Hideki Matsuyama", position: "T12", score: "-5", prizeMoney: 427500 },
+  { name: "Patrick Cantlay", position: "T12", score: "-5", prizeMoney: 427500 },
+  { name: "Jordan Spieth", position: "T12", score: "-5", prizeMoney: 427500 },
+  { name: "Jason Day", position: "T12", score: "-5", prizeMoney: 427500 },
+  { name: "Viktor Hovland", position: "T18", score: "-4", prizeMoney: 315000 },
+  { name: "Sungjae Im", position: "T18", score: "-4", prizeMoney: 315000 },
+  { name: "Ludvig \u00c5berg", position: "T21", score: "-3", prizeMoney: 252000 },
+  { name: "Matt Fitzpatrick", position: "T21", score: "-3", prizeMoney: 252000 },
+  { name: "Shane Lowry", position: "T24", score: "-2", prizeMoney: 182250 },
+  { name: "Tony Finau", position: "T24", score: "-2", prizeMoney: 182250 },
+  { name: "Brian Harman", position: "T24", score: "-2", prizeMoney: 182250 },
+  { name: "Adam Scott", position: "T27", score: "-1", prizeMoney: 157500 },
+  { name: "Bryson DeChambeau", position: "T27", score: "-1", prizeMoney: 157500 },
+  { name: "Jon Rahm", position: "T27", score: "-1", prizeMoney: 157500 },
+  { name: "Justin Thomas", position: "T30", score: "E", prizeMoney: 135000 },
+  { name: "Dustin Johnson", position: "T30", score: "E", prizeMoney: 135000 },
+  { name: "Corey Conners", position: "T30", score: "E", prizeMoney: 135000 },
+  { name: "Tommy Fleetwood", position: "T33", score: "E", prizeMoney: 121500 },
   { name: "Keegan Bradley", position: "T34", score: "+1", prizeMoney: 105750 },
   { name: "Robert MacIntyre", position: "T34", score: "+1", prizeMoney: 105750 },
   { name: "Brooks Koepka", position: "T36", score: "+2", prizeMoney: 92250 },
@@ -57,6 +56,15 @@ const MASTERS_2026_RESULTS: { name: string; position: string; score: string; pri
   { name: "Byeong Hun An", position: "MC", score: "", prizeMoney: 25000 },
 ];
 
+// Golfers who were NOT in the 2026 Masters field — remove any stale result rows
+// created by prior seeds so their picks don't show incorrect winnings.
+const MASTERS_2026_NON_PARTICIPANTS: string[] = [
+  "Tiger Woods",
+  "Phil Mickelson",
+  "Tom Kim",
+  "Sahith Theegala",
+];
+
 export async function seedMastersResults() {
   const masters = await queryOne<{ id: string }>(
     `SELECT id FROM tournaments WHERE name = 'Masters Tournament' AND season = '2025-2026'`
@@ -64,6 +72,16 @@ export async function seedMastersResults() {
   if (!masters) return;
 
   await execute(`UPDATE tournaments SET status = 'completed' WHERE id = $1`, [masters.id]);
+
+  // Clean up any stale result rows for golfers who didn't actually play
+  for (const name of MASTERS_2026_NON_PARTICIPANTS) {
+    await execute(
+      `DELETE FROM tournament_results
+       WHERE tournament_id = $1
+         AND golfer_id IN (SELECT id FROM golfers WHERE name = $2)`,
+      [masters.id, name]
+    );
+  }
 
   for (const r of MASTERS_2026_RESULTS) {
     const golfer = await queryOne<{ id: string }>(
