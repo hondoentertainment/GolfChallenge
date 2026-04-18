@@ -17,6 +17,8 @@ export default function AdminResultsPage() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [syncing, setSyncing] = useState(false);
+  const [finalizing, setFinalizing] = useState(false);
+  const [finalizingAll, setFinalizingAll] = useState(false);
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
 
@@ -74,6 +76,40 @@ export default function AdminResultsPage() {
     finally { setSyncing(false); }
   }
 
+  async function handleFinalize() {
+    if (!selectedTournament) return;
+    setFinalizing(true); setError(""); setMessage("");
+    try {
+      const res = await fetch("/api/admin/results", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "finalize", tournamentId: selectedTournament }),
+      });
+      const data = await res.json();
+      if (!res.ok) { setError(data.error); return; }
+      setMessage(`Finalized: ${data.synced} synced from ESPN, ${data.reconciled.created} created + ${data.reconciled.updated} updated payouts, ${data.notified} leagues notified.`);
+    } catch { setError("Failed to finalize"); }
+    finally { setFinalizing(false); }
+  }
+
+  async function handleFinalizeAll() {
+    setFinalizingAll(true); setError(""); setMessage("");
+    try {
+      const res = await fetch("/api/admin/results", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "finalize-all" }),
+      });
+      const data = await res.json();
+      if (!res.ok) { setError(data.error); return; }
+      const summary = data.finalized?.map((f: { tournamentName: string; synced: number; reconciled: { created: number; updated: number } }) =>
+        `${f.tournamentName}: ${f.synced} synced, ${f.reconciled.created + f.reconciled.updated} reconciled`
+      ).join("; ") || "No tournaments needed finalization";
+      setMessage(summary);
+    } catch { setError("Failed to finalize"); }
+    finally { setFinalizingAll(false); }
+  }
+
   if (loading) return <div className="flex flex-1 items-center justify-center min-h-screen"><div className="text-muted">Loading...</div></div>;
 
   return (
@@ -97,12 +133,25 @@ export default function AdminResultsPage() {
           </select>
         </div>
 
+        <div className="bg-surface rounded-xl p-6 border border-border mb-6">
+          <h3 className="font-semibold mb-2">Finalize All Recent Tournaments</h3>
+          <p className="text-xs text-muted mb-3">Finds any tournament that ended in the last 14 days but isn&apos;t marked completed, syncs ESPN, reconciles payouts, and notifies players.</p>
+          <button onClick={handleFinalizeAll} disabled={finalizingAll}
+            className="bg-primary hover:bg-primary-light text-white font-semibold px-5 py-2 rounded-lg transition-colors disabled:opacity-50">
+            {finalizingAll ? "Finalizing..." : "Finalize All Recent"}
+          </button>
+        </div>
+
         {selectedTournament && (
           <>
             <div className="flex flex-wrap gap-3 mb-6">
               <button onClick={handleSync} disabled={syncing}
                 className="bg-accent hover:bg-accent-light text-primary-dark font-semibold px-5 py-2 rounded-lg transition-colors disabled:opacity-50">
                 {syncing ? "Syncing..." : "Auto-Sync from ESPN"}
+              </button>
+              <button onClick={handleFinalize} disabled={finalizing}
+                className="bg-primary hover:bg-primary-light text-white font-semibold px-5 py-2 rounded-lg transition-colors disabled:opacity-50">
+                {finalizing ? "Finalizing..." : "Finalize Payouts"}
               </button>
               <select value={status} onChange={e => setStatus(e.target.value)}
                 className="px-4 py-2 rounded-lg border border-border bg-background">

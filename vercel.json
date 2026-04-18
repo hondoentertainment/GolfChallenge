@@ -13,6 +13,10 @@
       "schedule": "0 16 * * 3"
     },
     {
+      "path": "/api/cron/finalize-payouts",
+      "schedule": "0 6 * * 1"
+    },
+    {
       "path": "/api/cron/weekly-recap",
       "schedule": "0 12 * * 1"
     },
