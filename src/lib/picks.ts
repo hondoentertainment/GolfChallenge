@@ -389,3 +389,30 @@ export async function reconcilePickPayouts(): Promise<{ created: number; updated
 
   return { created, updated };
 }
+
+// Throttled reconciliation that runs at most once per 5 minutes per server instance.
+// Call this from API endpoints that serve player-facing data so payouts stay current
+// without waiting for cron jobs.
+let lastReconcileTime = 0;
+const RECONCILE_INTERVAL_MS = 5 * 60 * 1000;
+
+export async function ensurePayoutsReconciled(): Promise<void> {
+  const now = Date.now();
+  if (now - lastReconcileTime < RECONCILE_INTERVAL_MS) return;
+  lastReconcileTime = now;
+
+  const orphanCount = await queryOne<{ count: string }>(`
+    SELECT COUNT(*) as count
+    FROM picks p
+    JOIN tournaments t ON t.id = p.tournament_id
+    LEFT JOIN tournament_results tr ON tr.tournament_id = p.tournament_id AND tr.golfer_id = p.golfer_id
+    WHERE t.season = '2025-2026'
+      AND t.end_date < NOW()
+      AND p.is_missed = FALSE
+      AND (tr.id IS NULL OR (tr.prize_money = 0 AND tr.position IS NOT NULL AND tr.position NOT IN ('MC','CUT','WD','DQ','DNS','MDF','')))
+  `);
+
+  if (Number(orphanCount?.count) > 0) {
+    await reconcilePickPayouts();
+  }
+}
