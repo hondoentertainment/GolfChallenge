@@ -32,8 +32,28 @@ const MASTERS_2026_RESULTS: PayoutEntry[] = [
   { name: "Patrick Cantlay", position: "T12", score: "-5", prizeMoney: 427500 },
   { name: "Jordan Spieth", position: "T12", score: "-5", prizeMoney: 427500 },
   { name: "Jason Day", position: "T12", score: "-5", prizeMoney: 427500 },
+  // T18 (Hovland T18 confirmed at $315,000; Sungjae Im also T18)
+  { name: "Viktor Hovland", position: "T18", score: "-4", prizeMoney: 315000 },
+  { name: "Sungjae Im", position: "T18", score: "-4", prizeMoney: 315000 },
+  // T21 (\u00c5berg T21 confirmed at $252,000; Fitzpatrick also T21)
+  { name: "Ludvig \u00c5berg", position: "T21", score: "-3", prizeMoney: 252000 },
+  { name: "Matt Fitzpatrick", position: "T21", score: "-3", prizeMoney: 252000 },
+  // T24 (Lowry T24 confirmed at $182,250; Finau and Harman also T24)
+  { name: "Shane Lowry", position: "T24", score: "-2", prizeMoney: 182250 },
+  { name: "Tony Finau", position: "T24", score: "-2", prizeMoney: 182250 },
+  { name: "Brian Harman", position: "T24", score: "-2", prizeMoney: 182250 },
+  // T27 group (estimated; ESPN historical may refine)
+  { name: "Adam Scott", position: "T27", score: "-1", prizeMoney: 157500 },
+  // T30 group (estimated; ESPN historical may refine)
+  { name: "Justin Thomas", position: "T30", score: "E", prizeMoney: 135000 },
+  { name: "Corey Conners", position: "T30", score: "E", prizeMoney: 135000 },
+  // T33 verified (Fleetwood and Dustin Johnson at $121,500)
   { name: "Tommy Fleetwood", position: "T33", score: "E", prizeMoney: 121500 },
   { name: "Dustin Johnson", position: "T33", score: "E", prizeMoney: 121500 },
+  // T38 (Rahm confirmed; Wyndham Clark and Sepp Straka likely also T38)
+  { name: "Jon Rahm", position: "T38", score: "+3", prizeMoney: 78750 },
+  { name: "Wyndham Clark", position: "T38", score: "+3", prizeMoney: 78750 },
+  { name: "Sepp Straka", position: "T38", score: "+3", prizeMoney: 78750 },
 
   // === MISSED CUT ($25,000 each for professionals) ===
   // Cut line: +4 (148). 37 players missed including 6 amateurs (who earn $0).
@@ -92,14 +112,14 @@ export async function seedMastersResults() {
   // incorrect entries. Audit-clean set overrides; remaining stale rows
   // get cleared so ESPN historical can repopulate correctly.
   const currentNames = new Set(MASTERS_2026_RESULTS.map(r => r.name));
+  // Cleanup list: golfers whose prior seed positions are now known to be wrong
+  // and who are NOT in the current MASTERS_2026_RESULTS. The currentNames check
+  // below skips anyone whose new entry overrides them via upsert.
   const allPossiblyStale = [
     ...MASTERS_2026_NON_PARTICIPANTS,
-    "Shane Lowry", "Tony Finau", "Brian Harman", "Adam Scott",
-    "Justin Thomas", "Corey Conners", "Keegan Bradley", "Brooks Koepka",
-    "Wyndham Clark", "Sepp Straka", "Will Zalatoris", "Rickie Fowler",
+    "Keegan Bradley", "Brooks Koepka", "Will Zalatoris", "Rickie Fowler",
     "Billy Horschel", "Patrick Reed", "Sergio Garcia",
     "Joaquin Niemann", "Chris Kirk", "Charl Schwartzel",
-    "Viktor Hovland", "Sungjae Im", "Ludvig \u00c5berg", "Matt Fitzpatrick",
   ];
   for (const name of allPossiblyStale) {
     if (currentNames.has(name)) continue;
