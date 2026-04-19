@@ -1,3 +1,4 @@
+import { verifyCronAuth } from '@/lib/cron-auth';
 import { NextRequest, NextResponse } from 'next/server';
 import { query } from '@/lib/db';
 import { getTournaments, getLeagueStandings, getLeaguePicks } from '@/lib/picks';
@@ -6,9 +7,8 @@ import { ensureSeeded } from '@/lib/seed';
 
 // Runs Monday 12pm UTC - send weekly recap of last week's results
 export async function GET(req: NextRequest) {
-  if (process.env.CRON_SECRET && req.headers.get('authorization') !== `Bearer ${process.env.CRON_SECRET}`) {
-    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-  }
+  const authError = verifyCronAuth(req);
+  if (authError) return authError;
   await ensureSeeded();
   try {
     const tournaments = await getTournaments();
@@ -17,7 +17,9 @@ export async function GET(req: NextRequest) {
     const lastTournament = tournaments.filter(t => t.end_date < today).pop();
     if (!lastTournament) return NextResponse.json({ message: 'No completed tournament' });
 
-    const leagues = await query<{ id: string; name: string }>('SELECT id, name FROM leagues');
+    const leagues = await query<{ id: string; name: string }>(
+      'SELECT id, name FROM leagues WHERE archived = FALSE'
+    );
     let sent = 0;
 
     for (const league of leagues) {

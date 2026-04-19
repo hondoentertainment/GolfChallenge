@@ -1,3 +1,4 @@
+import { verifyCronAuth } from '@/lib/cron-auth';
 import { NextRequest, NextResponse } from 'next/server';
 import { getCurrentTournament, getPickOrder, markMissedPicks } from '@/lib/picks';
 import { query, queryOne } from '@/lib/db';
@@ -7,9 +8,8 @@ import { ensureSeeded } from '@/lib/seed';
 
 // Runs Wednesday 4pm UTC (9am PDT) - remind players who haven't picked yet
 export async function GET(req: NextRequest) {
-  if (process.env.CRON_SECRET && req.headers.get('authorization') !== `Bearer ${process.env.CRON_SECRET}`) {
-    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-  }
+  const authError = verifyCronAuth(req);
+  if (authError) return authError;
   await ensureSeeded();
   try {
     const tournament = await getCurrentTournament();
