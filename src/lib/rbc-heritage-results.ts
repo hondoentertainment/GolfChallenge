@@ -12,7 +12,7 @@ const RBC_HERITAGE_2026_RESULTS: PayoutEntry[] = [
   { name: "Si Woo Kim", position: "3", score: "-16", prizeMoney: 1360000 },
   { name: "Collin Morikawa", position: "T4", score: "-13", prizeMoney: 823333 },
   { name: "Harris English", position: "T4", score: "-13", prizeMoney: 823333 },
-  { name: "Ludvig \u00c5berg", position: "T4", score: "-13", prizeMoney: 823333 },
+  { name: "Ludvig Åberg", position: "T4", score: "-13", prizeMoney: 823333 },
   { name: "Xander Schauffele", position: "T12", score: "-10", prizeMoney: 455000 },
   { name: "Sahith Theegala", position: "T25", score: "-7", prizeMoney: 175000 },
   { name: "Viktor Hovland", position: "T42", score: "-3", prizeMoney: 55300 },
@@ -35,8 +35,8 @@ export function auditRBCHeritageResults() {
 export async function seedRBCHeritageResults() {
   const audit = auditRBCHeritageResults();
   if (!audit.approved) {
-    console.error('[rbc-heritage-results] AUDIT FAILED \u2014 refusing to publish payouts:');
-    for (const err of audit.errors) console.error(`  \u2717 ${err}`);
+    console.error('[rbc-heritage-results] AUDIT FAILED — refusing to publish payouts:');
+    for (const err of audit.errors) console.error(`  ✗ ${err}`);
     return;
   }
   if (audit.warnings.length > 0) {
