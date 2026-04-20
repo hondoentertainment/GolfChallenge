@@ -17,6 +17,17 @@ const config: Config = {
     }],
   },
   testMatch: ['**/__tests__/**/*.test.ts'],
+  collectCoverageFrom: [
+    'src/**/*.{ts,tsx}',
+    '!src/**/*.d.ts',
+    '!src/app/**/page.tsx',
+    '!src/app/**/layout.tsx',
+    '!src/app/**/loading.tsx',
+    '!src/app/**/error.tsx',
+    '!src/app/**/not-found.tsx',
+  ],
+  coverageDirectory: 'coverage',
+  coverageReporters: ['text-summary', 'json-summary', 'lcov'],
 };
 
 export default config;
