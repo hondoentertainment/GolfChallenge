@@ -282,8 +282,21 @@ export default function LeaguePage() {
             <span className="text-green-200 hidden sm:inline">/</span>
             <span className="font-medium truncate text-sm sm:text-base">{league?.name}</span>
           </div>
-          <button onClick={toggleDark} className="text-sm bg-white/10 hover:bg-white/20 px-2 py-1 rounded-lg">{dark ? "\u2600\uFE0F" : "\u{1F319}"}</button>
-          <span className="text-green-200 text-sm hidden sm:inline">{user?.username}</span>
+          <div className="flex items-center gap-2 sm:gap-3">
+            {user?.is_admin && (
+              <div className="relative group">
+                <button className="text-xs bg-accent/20 hover:bg-accent/30 px-3 py-1.5 rounded-lg text-accent-light font-medium">
+                  Admin &#9662;
+                </button>
+                <div className="absolute right-0 top-full mt-1 bg-surface border border-border rounded-lg shadow-lg py-1 w-40 opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all z-50">
+                  <Link href="/admin/results" className="block px-4 py-2 text-sm text-foreground hover:bg-surface-alt">Results</Link>
+                  <Link href="/admin/jobs" className="block px-4 py-2 text-sm text-foreground hover:bg-surface-alt">Jobs</Link>
+                </div>
+              </div>
+            )}
+            <button onClick={toggleDark} className="text-sm bg-white/10 hover:bg-white/20 px-2 py-1 rounded-lg">{dark ? "\u2600\uFE0F" : "\u{1F319}"}</button>
+            <span className="text-green-200 text-sm hidden sm:inline">{user?.username}</span>
+          </div>
         </div>
       </nav>
 
