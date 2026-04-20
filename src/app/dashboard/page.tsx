@@ -118,9 +118,15 @@ export default function DashboardPage() {
           </Link>
           <div className="flex items-center gap-2 sm:gap-4">
             {user?.is_admin && (
-              <Link href="/admin/results" className="text-xs bg-accent/20 hover:bg-accent/30 px-2 py-1 rounded text-accent-light">
-                Admin
-              </Link>
+              <div className="relative group">
+                <button className="text-xs bg-accent/20 hover:bg-accent/30 px-3 py-1.5 rounded-lg text-accent-light font-medium">
+                  Admin &#9662;
+                </button>
+                <div className="absolute right-0 top-full mt-1 bg-surface border border-border rounded-lg shadow-lg py-1 w-40 opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all z-50">
+                  <Link href="/admin/results" className="block px-4 py-2 text-sm text-foreground hover:bg-surface-alt">Results</Link>
+                  <Link href="/admin/jobs" className="block px-4 py-2 text-sm text-foreground hover:bg-surface-alt">Jobs</Link>
+                </div>
+              </div>
             )}
             <button onClick={toggleDark} className="text-sm bg-white/10 hover:bg-white/20 px-2.5 py-1.5 rounded-lg" title="Toggle dark mode">
               {dark ? "\u2600\uFE0F" : "\u{1F319}"}
