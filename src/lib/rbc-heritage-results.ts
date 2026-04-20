@@ -3,9 +3,9 @@ import { v4 as uuidv4 } from 'uuid';
 import { auditPayouts, PayoutEntry, AuditContext } from './payout-audit';
 
 // 2026 RBC Heritage final results (Harbour Town Golf Links, April 16-19).
-// Signature Event: $20M purse, 80-player field, no cut — everyone gets paid.
+// Signature Event: $20M purse, 80-player field, no cut — everyone gets paid (min $30,000).
 // Matt Fitzpatrick defeated Scottie Scheffler in a playoff.
-// Sources: PGA Tour, CBS Sports, Golf Channel, ESPN (verified April 19, 2026).
+// Sources: PGA Tour, CBS Sports, Golf Channel, NBC Sports, ESPN (verified April 19-20, 2026).
 const RBC_HERITAGE_2026_RESULTS: PayoutEntry[] = [
   { name: "Matt Fitzpatrick", position: "1", score: "-18", prizeMoney: 3600000 },
   { name: "Scottie Scheffler", position: "2", score: "-18", prizeMoney: 2160000 },
@@ -13,7 +13,20 @@ const RBC_HERITAGE_2026_RESULTS: PayoutEntry[] = [
   { name: "Collin Morikawa", position: "T4", score: "-13", prizeMoney: 823333 },
   { name: "Harris English", position: "T4", score: "-13", prizeMoney: 823333 },
   { name: "Ludvig Åberg", position: "T4", score: "-13", prizeMoney: 823333 },
+  { name: "Rickie Fowler", position: "T8", score: "-11", prizeMoney: 615000 },
+  { name: "Kurt Kitayama", position: "T8", score: "-11", prizeMoney: 615000 },
+  { name: "Patrick Cantlay", position: "T8", score: "-11", prizeMoney: 615000 },
+  { name: "Gary Woodland", position: "T8", score: "-11", prizeMoney: 615000 },
+  { name: "Keegan Bradley", position: "T12", score: "-10", prizeMoney: 455000 },
   { name: "Xander Schauffele", position: "T12", score: "-10", prizeMoney: 455000 },
+  { name: "Maverick McNealy", position: "T16", score: "-8", prizeMoney: 332000 },
+  { name: "Wyndham Clark", position: "T16", score: "-8", prizeMoney: 332000 },
+  { name: "Akshay Bhatia", position: "T16", score: "-8", prizeMoney: 332000 },
+  { name: "Sam Burns", position: "T16", score: "-8", prizeMoney: 332000 },
+  { name: "Ryan Fox", position: "T16", score: "-8", prizeMoney: 332000 },
+  { name: "Patrick Rodgers", position: "T16", score: "-8", prizeMoney: 332000 },
+  { name: "Pierceson Coody", position: "T16", score: "-8", prizeMoney: 332000 },
+  { name: "Andrew Novak", position: "T16", score: "-8", prizeMoney: 332000 },
   { name: "Sahith Theegala", position: "T25", score: "-7", prizeMoney: 175000 },
   { name: "Viktor Hovland", position: "T42", score: "-3", prizeMoney: 55300 },
 ];
