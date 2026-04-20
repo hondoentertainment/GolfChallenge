@@ -154,6 +154,10 @@ export default function AdminResultsPage() {
         <div className="max-w-6xl mx-auto flex items-center gap-4">
           <Link href="/dashboard" className="text-xl font-bold flex items-center gap-2"><span>&#9971;</span> Golf Challenge</Link>
           <span className="text-green-200">/</span><span className="font-medium">Admin Results</span>
+          <div className="ml-auto flex gap-3 text-sm">
+            <span className="text-white font-medium">Results</span>
+            <Link href="/admin/jobs" className="text-green-200 hover:text-white">Jobs</Link>
+          </div>
         </div>
       </nav>
 
