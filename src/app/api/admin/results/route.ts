@@ -86,6 +86,19 @@ export async function POST(req: NextRequest) {
       return NextResponse.json(coverage);
     }
 
+    // Finalize a specific tournament (sync + reconcile + mark completed + notify)
+    if (body.action === 'finalize') {
+      if (!body.tournamentId) return NextResponse.json({ error: 'tournamentId required' }, { status: 400 });
+      const result = await finalizeTournamentPayouts(body.tournamentId);
+      return NextResponse.json(result);
+    }
+
+    // Finalize all recently ended tournaments that aren't marked completed
+    if (body.action === 'finalize-all') {
+      const result = await finalizeRecentTournaments();
+      return NextResponse.json(result);
+    }
+
     // Reconcile all picks (backfill missing payouts)
     if (body.action === 'reconcile') {
       const reconciled = await reconcilePickPayouts();

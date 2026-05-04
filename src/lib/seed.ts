@@ -2,6 +2,7 @@ import { initializeDb } from './db';
 import { seedTournaments, seedGolfers } from './pga-schedule';
 import { seedMastersResults } from './masters-results';
 import { seedRBCHeritageResults } from './rbc-heritage-results';
+import { seedCadillacChampionshipResults } from './recent-tournament-results';
 import { populateAllCompletedTournaments } from './pga-data';
 
 // Fix 6: use a single in-flight promise as the concurrency guard. The first
@@ -33,6 +34,7 @@ async function doSeed() {
   await seedGolfers();
   await seedMastersResults();
   await seedRBCHeritageResults();
+  await seedCadillacChampionshipResults();
 
   // After the audit-approved tournament seeds, populate every completed tournament
   // from ESPN's historical summary. audit-approved rows are never overwritten;

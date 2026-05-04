@@ -1,19 +1,31 @@
 import { NextResponse } from 'next/server';
 import { getTournaments } from '@/lib/picks';
-import { query } from '@/lib/db';
+import { query, queryOne } from '@/lib/db';
 import { ensureSeeded } from '@/lib/seed';
+
+const ACTIVE_SEASON = '2025-2026';
 
 // Public endpoint - no auth required
 export async function GET() {
   await ensureSeeded();
   try {
-    const tournaments = await getTournaments();
+    const tournaments = await getTournaments(ACTIVE_SEASON);
     const today = new Date().toISOString().split('T')[0];
 
-    // Find the most recently completed tournament
-    const completed = tournaments.filter(t => t.end_date < today);
-    const lastTournament = completed[completed.length - 1];
-    if (!lastTournament) return NextResponse.json({ recap: null });
+    // Most recent finished event that has results (avoids empty recap when only some events are seeded)
+    const lastWithResults = await queryOne<{ id: string }>(
+      `SELECT t.id
+       FROM tournaments t
+       WHERE t.season = $1 AND t.end_date < $2
+         AND EXISTS (SELECT 1 FROM tournament_results tr WHERE tr.tournament_id = t.id)
+       ORDER BY t.end_date DESC
+       LIMIT 1`,
+      [ACTIVE_SEASON, today]
+    );
+    if (!lastWithResults) return NextResponse.json({ recap: null, upcoming: null });
+
+    const lastTournament = tournaments.find((t) => t.id === lastWithResults.id);
+    if (!lastTournament) return NextResponse.json({ recap: null, upcoming: null });
 
     // Get top results for this tournament
     const results = await query<{ golfer_name: string; position: string; prize_money: number; score: string }>(
