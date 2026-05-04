@@ -1,5 +1,4 @@
-import { query, queryOne, execute } from './db';
-import { v4 as uuidv4 } from 'uuid';
+import { seedEventResultsIfEmpty } from './seed-event-results';
 
 const MASTERS_2026_RESULTS: { name: string; position: string; score: string; prizeMoney: number }[] = [
   { name: "Rory McIlroy", position: "1", score: "-12", prizeMoney: 4500000 },
@@ -55,31 +54,5 @@ const MASTERS_2026_RESULTS: { name: string; position: string; score: string; pri
 ];
 
 export async function seedMastersResults() {
-  const masters = await queryOne<{ id: string }>(
-    `SELECT id FROM tournaments WHERE name = 'Masters Tournament' AND season = '2025-2026'`
-  );
-  if (!masters) return;
-
-  const existingCount = await queryOne<{ count: string }>(
-    `SELECT COUNT(*) as count FROM tournament_results WHERE tournament_id = $1`,
-    [masters.id]
-  );
-  if (Number(existingCount?.count) > 0) return;
-
-  await execute(`UPDATE tournaments SET status = 'completed' WHERE id = $1`, [masters.id]);
-
-  for (const r of MASTERS_2026_RESULTS) {
-    const golfer = await queryOne<{ id: string }>(
-      `SELECT id FROM golfers WHERE name = $1`,
-      [r.name]
-    );
-    if (!golfer) continue;
-
-    await execute(
-      `INSERT INTO tournament_results (id, tournament_id, golfer_id, position, prize_money, score)
-       VALUES ($1, $2, $3, $4, $5, $6)
-       ON CONFLICT(tournament_id, golfer_id) DO NOTHING`,
-      [uuidv4(), masters.id, golfer.id, r.position, r.prizeMoney, r.score]
-    );
-  }
+  await seedEventResultsIfEmpty('Masters Tournament', '2025-2026', MASTERS_2026_RESULTS);
 }

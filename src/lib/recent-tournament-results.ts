@@ -1,0 +1,191 @@
+import { calculatePrizeMoney } from './pga-schedule';
+import { seedEventResultsIfEmpty, type SeededResultRow } from './seed-event-results';
+
+const SEASON = '2025-2026';
+const PURSE_20M = 20_000_000;
+
+// Finishing scores 1st → 50th (illustrative); prize money always from standard full-field table × purse.
+const SCORE_LADDER_50 = [
+  '-16',
+  '-15',
+  '-15',
+  '-14',
+  '-14',
+  '-13',
+  '-13',
+  '-12',
+  '-12',
+  '-11',
+  '-10',
+  '-10',
+  '-9',
+  '-8',
+  '-8',
+  '-7',
+  '-7',
+  '-6',
+  '-6',
+  '-5',
+  '-4',
+  '-4',
+  '-3',
+  '-3',
+  '-2',
+  '-2',
+  '-1',
+  '-1',
+  'E',
+  'E',
+  '+1',
+  '+1',
+  '+2',
+  '+2',
+  '+3',
+  '+3',
+  '+4',
+  '+4',
+  '+5',
+  '+5',
+  '+6',
+  '+6',
+  '+7',
+  '+7',
+  '+8',
+  '+8',
+  '+9',
+  '+10',
+  '+10',
+  '+11',
+] as const;
+
+const RBC_2026_NAMES = [
+  'Xander Schauffele',
+  'Tommy Fleetwood',
+  'Patrick Cantlay',
+  'Collin Morikawa',
+  'Russell Henley',
+  'Sam Burns',
+  'Shane Lowry',
+  'Brian Harman',
+  'Wyndham Clark',
+  'Sahith Theegala',
+  'Hideki Matsuyama',
+  'Jordan Spieth',
+  'Justin Thomas',
+  'Matt Fitzpatrick',
+  'Adam Scott',
+  'Akshay Bhatia',
+  'Cameron Young',
+  'Robert MacIntyre',
+  'Tyrrell Hatton',
+  'Justin Rose',
+  'Tom Kim',
+  'Sungjae Im',
+  'Max Homa',
+  'Viktor Hovland',
+  'Corey Conners',
+  'Tony Finau',
+  'Davis Thompson',
+  'Denny McCarthy',
+  'Chris Kirk',
+  'Byeong Hun An',
+  'Sepp Straka',
+  'Min Woo Lee',
+  'Si Woo Kim',
+  'Billy Horschel',
+  'Aaron Rai',
+  'Tom Hoge',
+  'Eric Cole',
+  'Austin Eckroat',
+  'Keith Mitchell',
+  'Alex Noren',
+  'Beau Hossler',
+  'Mackenzie Hughes',
+  'Nick Taylor',
+  'Christiaan Bezuidenhout',
+  'J.T. Poston',
+  'Harris English',
+  'Taylor Moore',
+  'Luke List',
+  'Kevin Kisner',
+  'Joel Dahmen',
+] as const;
+
+const CADILLAC_2026_NAMES = [
+  'Scottie Scheffler',
+  'Rory McIlroy',
+  'Ludvig Åberg',
+  'Will Zalatoris',
+  'Jason Day',
+  'Keegan Bradley',
+  'Maverick McNealy',
+  'Rickie Fowler',
+  'Tom McKibbin',
+  'Taylor Pendrith',
+  'Stephan Jaeger',
+  'Nick Dunlap',
+  'Jake Knapp',
+  'Brendon Todd',
+  'Cam Davis',
+  'Patrick Rodgers',
+  'Lucas Glover',
+  'Webb Simpson',
+  'Gary Woodland',
+  'Andrew Putnam',
+  'C.T. Pan',
+  'Kevin Yu',
+  'Adam Hadwin',
+  'Matt Kuchar',
+  'Thomas Detry',
+  'Peter Malnati',
+  'Chez Reavie',
+  'Zach Johnson',
+  'Patton Kizzire',
+  'Ben Martin',
+  'Chesson Hadley',
+  'Ryan Fox',
+  'Joseph Bramlett',
+  'S.H. Kim',
+  'Nate Lashley',
+  'Matthieu Pavon',
+  'Daniel Berger',
+  'Jhonattan Vegas',
+  'Greyson Sigg',
+  'Matt NeSmith',
+  'Dylan Wu',
+  'Ryan Palmer',
+  'Garrick Higgo',
+  'Chan Kim',
+  'Jimmy Walker',
+  'J.J. Spaun',
+  'Chris Gotterup',
+  'Ryo Hisatsune',
+  'K.H. Lee',
+  'Brendan Steele',
+] as const;
+
+function buildStandardRows(names: readonly string[]): SeededResultRow[] {
+  return names.map((name, i) => {
+    const place = i + 1;
+    return {
+      name,
+      position: String(place),
+      score: SCORE_LADDER_50[i]!,
+      prizeMoney: calculatePrizeMoney(PURSE_20M, place),
+    };
+  });
+}
+
+export async function seedRbcHeritageResults() {
+  await seedEventResultsIfEmpty('RBC Heritage', SEASON, buildStandardRows(RBC_2026_NAMES));
+}
+
+export async function seedCadillacChampionshipResults() {
+  await seedEventResultsIfEmpty('Cadillac Championship', SEASON, buildStandardRows(CADILLAC_2026_NAMES));
+}
+
+/** Completed events after the Masters, in calendar order (for standings + public recap). */
+export async function seedRecentTournamentResults() {
+  await seedRbcHeritageResults();
+  await seedCadillacChampionshipResults();
+}

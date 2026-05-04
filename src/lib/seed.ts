@@ -1,6 +1,7 @@
 import { initializeDb } from './db';
 import { seedTournaments, seedGolfers } from './pga-schedule';
 import { seedMastersResults } from './masters-results';
+import { seedRecentTournamentResults } from './recent-tournament-results';
 
 let seeded = false;
 let seeding: Promise<void> | null = null;
@@ -18,6 +19,7 @@ async function doSeed() {
     await seedTournaments();
     await seedGolfers();
     await seedMastersResults();
+    await seedRecentTournamentResults();
     seeded = true;
   } finally {
     seeding = null;
