@@ -1,7 +1,7 @@
 import { query, queryOne, execute } from './db';
 import { v4 as uuidv4 } from 'uuid';
 import { getLeagueMembers } from './leagues';
-import { getPickDeadline, calculatePrizeMoney, parsePosition } from './pga-schedule';
+import { getPickDeadline, calculatePrizeMoney, parsePosition, allocatePurseByFinishPositions, syncTournamentPursesFromSchedule } from './pga-schedule';
 import { logAction } from './audit';
 
 export interface Pick {
@@ -417,6 +417,51 @@ export async function reconcilePickPayouts(): Promise<{ created: number; updated
   }
 
   return { created, updated, historicalFetched };
+}
+
+/**
+ * Rewrite prize_money for every numeric finisher from current `tournaments.purse`
+ * (ties split combined places). MC/CUT/WD rows are left unchanged.
+ */
+export async function recalculateAllTournamentResultPayoutsFromPurses(
+  season = '2025-2026',
+): Promise<{ tournamentsWithResults: number; resultRowsUpdated: number }> {
+  const tournaments = await query<{ id: string; name: string; purse: number }>(
+    `SELECT id, name, purse FROM tournaments WHERE season = $1`,
+    [season],
+  );
+  let tournamentsWithResults = 0;
+  let resultRowsUpdated = 0;
+  for (const t of tournaments) {
+    const rows = await query<{ id: string; position: string }>(
+      `SELECT id, position FROM tournament_results WHERE tournament_id = $1`,
+      [t.id],
+    );
+    if (rows.length === 0) continue;
+    tournamentsWithResults++;
+    const alloc = allocatePurseByFinishPositions(t.purse, t.name, rows);
+    for (const [id, money] of alloc) {
+      await execute(`UPDATE tournament_results SET prize_money = $1 WHERE id = $2`, [money, id]);
+      resultRowsUpdated++;
+    }
+  }
+  return { tournamentsWithResults, resultRowsUpdated };
+}
+
+/** Sync schedule purses into the DB, recompute finisher payouts from positions, then reconcile orphan picks. */
+export async function syncPursesAndRecalculateParticipantTotals(
+  season = '2025-2026',
+): Promise<{
+  pursesUpdated: number;
+  tournamentsWithResults: number;
+  resultRowsUpdated: number;
+  reconciled: { created: number; updated: number; historicalFetched: number };
+}> {
+  const pursesUpdated = await syncTournamentPursesFromSchedule(season);
+  const { tournamentsWithResults, resultRowsUpdated } =
+    await recalculateAllTournamentResultPayoutsFromPurses(season);
+  const reconciled = await reconcilePickPayouts();
+  return { pursesUpdated, tournamentsWithResults, resultRowsUpdated, reconciled };
 }
 
 // Throttled reconciliation that runs at most once per 5 minutes per server instance.

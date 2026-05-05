@@ -9,6 +9,7 @@ import {
   MASTERS_PAYOUT_PERCENTAGES,
   getPayoutTable,
   parsePosition,
+  allocatePurseByFinishPositions,
 } from '@/lib/pga-schedule';
 
 describe('PGA Schedule', () => {
@@ -331,5 +332,43 @@ describe('Masters Payout Structure', () => {
     const standardPayouts = getTournamentPayouts(mastersPurse);
     expect(mastersPayouts[0].prizeMoney).toBe(4500000);
     expect(standardPayouts[0].prizeMoney).toBe(4050000);
+  });
+
+  test('allocatePurseByFinishPositions splits a 3-way T3', () => {
+    const purse = 20_000_000;
+    const rows = [
+      { id: 'a', position: 'T3' },
+      { id: 'b', position: 'T3' },
+      { id: 'c', position: 'T3' },
+    ];
+    const m = allocatePurseByFinishPositions(purse, 'RBC Heritage', rows);
+    const p3 = calculatePrizeMoney(purse, 3, 'RBC Heritage');
+    const p4 = calculatePrizeMoney(purse, 4, 'RBC Heritage');
+    const p5 = calculatePrizeMoney(purse, 5, 'RBC Heritage');
+    const expected = Math.round((p3 + p4 + p5) / 3);
+    expect(m.get('a')).toBe(expected);
+    expect(m.get('b')).toBe(expected);
+    expect(m.get('c')).toBe(expected);
+  });
+
+  test('allocatePurseByFinishPositions handles solo then 2-way tie', () => {
+    const purse = 20_000_000;
+    const rows = [
+      { id: 'w', position: '1' },
+      { id: 'x', position: '2' },
+      { id: 'y', position: 'T3' },
+      { id: 'z', position: 'T3' },
+    ];
+    const m = allocatePurseByFinishPositions(purse, undefined, rows);
+    expect(m.get('w')).toBe(calculatePrizeMoney(purse, 1));
+    expect(m.get('x')).toBe(calculatePrizeMoney(purse, 2));
+    const tie = Math.round((calculatePrizeMoney(purse, 3) + calculatePrizeMoney(purse, 4)) / 2);
+    expect(m.get('y')).toBe(tie);
+    expect(m.get('z')).toBe(tie);
+  });
+
+  test('allocatePurseByFinishPositions omits MC', () => {
+    const m = allocatePurseByFinishPositions(20_000_000, undefined, [{ id: 'a', position: 'MC' }]);
+    expect(m.size).toBe(0);
   });
 });

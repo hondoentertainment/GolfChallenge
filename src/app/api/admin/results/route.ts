@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getCurrentUser } from '@/lib/auth';
-import { updateTournamentResult, updateTournamentStatus, getTournaments, getTournament, getGolfers, reconcilePickPayouts } from '@/lib/picks';
+import { updateTournamentResult, updateTournamentStatus, getTournaments, getTournament, getGolfers, reconcilePickPayouts, syncPursesAndRecalculateParticipantTotals } from '@/lib/picks';
 import { syncTournamentResults, finalizeTournamentPayouts, finalizeRecentTournaments, populateHistoricalTournament, populateAllCompletedTournaments, getTournamentCoverage } from '@/lib/pga-data';
 import { notifyLeagueMembers } from '@/lib/notifications';
 import { recalculateBadges } from '@/lib/badges';
@@ -86,17 +86,23 @@ export async function POST(req: NextRequest) {
       return NextResponse.json(coverage);
     }
 
-    // Finalize a specific tournament (sync + reconcile + mark completed + notify)
-    if (body.action === 'finalize') {
-      if (!body.tournamentId) return NextResponse.json({ error: 'tournamentId required' }, { status: 400 });
-      const result = await finalizeTournamentPayouts(body.tournamentId);
-      return NextResponse.json(result);
-    }
-
-    // Finalize all recently ended tournaments that aren't marked completed
-    if (body.action === 'finalize-all') {
-      const result = await finalizeRecentTournaments();
-      return NextResponse.json(result);
+    if (body.action === 'refresh-purse-payouts') {
+      const result = await syncPursesAndRecalculateParticipantTotals('2025-2026');
+      const leagues = await query<{ league_id: string }>(
+        `SELECT DISTINCT p.league_id FROM picks p
+         JOIN tournaments t ON t.id = p.tournament_id
+         WHERE t.season = '2025-2026'`,
+      );
+      for (const l of leagues) {
+        await recalculateBadges(l.league_id);
+      }
+      await logAction(
+        'purse_payout_refresh',
+        `Purse sync: ${result.pursesUpdated} tournaments updated; ${result.resultRowsUpdated} payouts recalculated; reconcile +${result.reconciled.created}/${result.reconciled.updated}; badges ${leagues.length} leagues`,
+        undefined,
+        user.id,
+      );
+      return NextResponse.json({ ...result, badgesRefreshed: leagues.length });
     }
 
     // Reconcile all picks (backfill missing payouts)

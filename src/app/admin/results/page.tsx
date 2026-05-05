@@ -19,6 +19,7 @@ export default function AdminResultsPage() {
   const [syncing, setSyncing] = useState(false);
   const [finalizing, setFinalizing] = useState(false);
   const [finalizingAll, setFinalizingAll] = useState(false);
+  const [refreshingPurses, setRefreshingPurses] = useState(false);
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
 
@@ -146,6 +147,28 @@ export default function AdminResultsPage() {
     } catch { setError("Failed to fetch coverage"); }
   }
 
+  async function handleRefreshPursePayouts() {
+    setRefreshingPurses(true); setError(""); setMessage("");
+    try {
+      const res = await fetch("/api/admin/results", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "refresh-purse-payouts" }),
+      });
+      const data = await res.json();
+      if (!res.ok) { setError(data.error); return; }
+      setMessage(
+        `Purse sync: ${data.pursesUpdated} tournament row(s) updated. ` +
+        `Recalculated ${data.resultRowsUpdated} payouts across ${data.tournamentsWithResults} event(s). ` +
+        `Reconcile created ${data.reconciled?.created ?? 0}, updated ${data.reconciled?.updated ?? 0}. ` +
+        `Badges refreshed for ${data.badgesRefreshed ?? 0} league(s).`
+      );
+      const tr = await fetch("/api/admin/results").then(r => r.json());
+      if (tr.tournaments) setTournaments(tr.tournaments);
+    } catch { setError("Failed to refresh payouts from purses"); }
+    finally { setRefreshingPurses(false); }
+  }
+
   if (loading) return <div className="flex flex-1 items-center justify-center min-h-screen"><div className="text-muted">Loading...</div></div>;
 
   return (
@@ -166,9 +189,10 @@ export default function AdminResultsPage() {
 
         <div className="bg-surface rounded-xl p-6 border border-border mb-6">
           <h3 className="font-semibold mb-2">Season-Wide Actions</h3>
-          <p className="text-xs text-muted mb-3">Populate every completed tournament from ESPN historical data, then verify coverage. Audit-approved rows are never overwritten. Production checks: <code className="text-xs bg-surface px-1 rounded">GET /api/health</code></p>
+          <p className="text-xs text-muted mb-3">Populate every completed tournament from ESPN historical data, then verify coverage. Use <strong>Sync purses &amp; payouts</strong> after updating prize purses in code so all standings match the latest purse (ties split PGA-style). Production checks: <code className="text-xs bg-surface px-1 rounded">GET /api/health</code></p>
           <div className="flex flex-wrap gap-2">
             <button onClick={handlePopulateAll} className="bg-accent hover:bg-accent-light text-primary-dark font-semibold px-4 py-2 rounded-lg text-sm">Populate All Completed</button>
+            <button onClick={handleRefreshPursePayouts} disabled={refreshingPurses} className="bg-primary hover:bg-primary-light text-white font-semibold px-4 py-2 rounded-lg text-sm disabled:opacity-50">{refreshingPurses ? "Syncing…" : "Sync purses & payouts"}</button>
             <button onClick={handleCoverage} className="bg-surface-alt border border-border hover:border-primary font-medium px-4 py-2 rounded-lg text-sm">Coverage Report</button>
           </div>
         </div>
