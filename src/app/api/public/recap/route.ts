@@ -11,6 +11,7 @@ export async function GET() {
   try {
     const tournaments = await getTournaments(ACTIVE_SEASON);
     const today = new Date().toISOString().split('T')[0];
+    const upcoming = tournaments.find((t) => t.start_date > today) ?? null;
 
     // Most recent finished event that has results (avoids empty recap when only some events are seeded)
     const lastWithResults = await queryOne<{ id: string }>(
@@ -22,12 +23,24 @@ export async function GET() {
        LIMIT 1`,
       [ACTIVE_SEASON, today]
     );
-    if (!lastWithResults) return NextResponse.json({ recap: null, upcoming: null });
+
+    if (!lastWithResults) {
+      return NextResponse.json({
+        recap: null,
+        upcoming,
+        noRecapReason: 'no_completed_events_with_results' as const,
+      });
+    }
 
     const lastTournament = tournaments.find((t) => t.id === lastWithResults.id);
-    if (!lastTournament) return NextResponse.json({ recap: null, upcoming: null });
+    if (!lastTournament) {
+      return NextResponse.json({
+        recap: null,
+        upcoming,
+        noRecapReason: 'tournament_not_found' as const,
+      });
+    }
 
-    // Get top results for this tournament
     const results = await query<{ golfer_name: string; position: string; prize_money: number; score: string }>(
       `SELECT g.name as golfer_name, tr.position, tr.prize_money::int, tr.score
        FROM tournament_results tr
@@ -38,15 +51,13 @@ export async function GET() {
       [lastTournament.id]
     );
 
-    // Get upcoming tournament
-    const upcoming = tournaments.find(t => t.start_date > today);
-
     return NextResponse.json({
       recap: {
         tournament: lastTournament,
         results,
       },
       upcoming,
+      noRecapReason: results.length === 0 ? ('empty_leaderboard' as const) : null,
     });
   } catch {
     return NextResponse.json({ error: 'Failed to fetch recap' }, { status: 500 });

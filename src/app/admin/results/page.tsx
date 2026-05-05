@@ -166,7 +166,7 @@ export default function AdminResultsPage() {
 
         <div className="bg-surface rounded-xl p-6 border border-border mb-6">
           <h3 className="font-semibold mb-2">Season-Wide Actions</h3>
-          <p className="text-xs text-muted mb-3">Populate every completed tournament from ESPN historical data, then verify coverage. Audit-approved rows are never overwritten.</p>
+          <p className="text-xs text-muted mb-3">Populate every completed tournament from ESPN historical data, then verify coverage. Audit-approved rows are never overwritten. Production checks: <code className="text-xs bg-surface px-1 rounded">GET /api/health</code></p>
           <div className="flex flex-wrap gap-2">
             <button onClick={handlePopulateAll} className="bg-accent hover:bg-accent-light text-primary-dark font-semibold px-4 py-2 rounded-lg text-sm">Populate All Completed</button>
             <button onClick={handleCoverage} className="bg-surface-alt border border-border hover:border-primary font-medium px-4 py-2 rounded-lg text-sm">Coverage Report</button>
