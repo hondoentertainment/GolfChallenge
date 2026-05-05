@@ -3,8 +3,8 @@ import { NextRequest, NextResponse } from 'next/server';
 import { finalizeRecentTournaments } from '@/lib/pga-data';
 import { ensureSeeded } from '@/lib/seed';
 
-// Runs Monday 6am UTC — catches any tournament that ended over the weekend
-// and ensures all player picks have their payouts captured.
+// After PGA events end (UTC): sync ESPN, finalize payouts, notify leagues.
+// Schedules in vercel.json: Sun 23:30; Mon 03:00 & 06:00. Idempotent if already completed.
 export async function GET(req: NextRequest) {
   const authError = verifyCronAuth(req);
   if (authError) return authError;

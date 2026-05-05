@@ -1,13 +1,14 @@
 import { verifyCronAuth } from '@/lib/cron-auth';
 import { NextRequest, NextResponse } from 'next/server';
 import { syncTournamentResults } from '@/lib/pga-data';
-import { getCurrentTournament, getTournaments, reconcilePickPayouts } from '@/lib/picks';
+import { getCurrentTournament, reconcilePickPayouts } from '@/lib/picks';
 import { recalculateBadges } from '@/lib/badges';
 import { notifyLeagueMembers } from '@/lib/notifications';
 import { logAction } from '@/lib/audit';
 import { query } from '@/lib/db';
 import { ensureSeeded } from '@/lib/seed';
 
+/** Polls ESPN for the in-season event; Sun hourly + Thu–Sat every 2h (see vercel.json). */
 export async function GET(req: NextRequest) {
   const authError = verifyCronAuth(req);
   if (authError) return authError;
