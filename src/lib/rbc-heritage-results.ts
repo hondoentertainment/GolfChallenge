@@ -8,7 +8,8 @@ import { auditPayouts, PayoutEntry, AuditContext } from './payout-audit';
 // Sources: PGA Tour, CBS Sports, Golf Channel, NBC Sports, ESPN (verified April 19-20, 2026).
 const RBC_HERITAGE_2026_RESULTS: PayoutEntry[] = [
   { name: "Matt Fitzpatrick", position: "1", score: "-18", prizeMoney: 3600000 },
-  { name: "Scottie Scheffler", position: "2", score: "-18", prizeMoney: 2160000 },
+  // Full 2nd-place share ($20M × 10.9%) — aligns with PRIZE_PAYOUT_PERCENTAGES / admin purse refresh
+  { name: "Scottie Scheffler", position: "2", score: "-18", prizeMoney: 2180000 },
   { name: "Si Woo Kim", position: "3", score: "-16", prizeMoney: 1360000 },
   { name: "Collin Morikawa", position: "T4", score: "-13", prizeMoney: 823333 },
   { name: "Harris English", position: "T4", score: "-13", prizeMoney: 823333 },
