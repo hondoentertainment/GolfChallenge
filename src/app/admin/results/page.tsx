@@ -20,6 +20,7 @@ export default function AdminResultsPage() {
   const [finalizing, setFinalizing] = useState(false);
   const [finalizingAll, setFinalizingAll] = useState(false);
   const [refreshingPurses, setRefreshingPurses] = useState(false);
+  const [fullPayoutUpdate, setFullPayoutUpdate] = useState(false);
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
 
@@ -169,6 +170,34 @@ export default function AdminResultsPage() {
     finally { setRefreshingPurses(false); }
   }
 
+  async function handleUpdateAllPayouts() {
+    setFullPayoutUpdate(true); setError(""); setMessage("");
+    try {
+      const res = await fetch("/api/admin/results", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "update-all-payouts" }),
+      });
+      const data = await res.json();
+      if (!res.ok) { setError(data.error); return; }
+      const finalizedN = data.finalized?.finalized?.length ?? 0;
+      const cov: { name: string; pickedWithoutResult: number }[] = data.coverage?.tournaments ?? [];
+      const gapList = cov.filter((t) => t.pickedWithoutResult > 0).map((t) => `${t.name} (${t.pickedWithoutResult})`).join(", ");
+      setMessage(
+        `Full update complete. Finalized ${finalizedN} recent event(s). ESPN populate +${data.populateAll?.totalPopulated ?? 0}. ` +
+        `Purse sync ${data.purseSync?.pursesUpdated ?? 0} tournaments; ${data.purseSync?.resultRowsUpdated ?? 0} payout rows recalculated. ` +
+        `Season results: ${data.stats?.totalResultRows ?? 0} rows; ` +
+        `reported prize $${(data.stats?.seasonPrizeMoneyReported ?? 0).toLocaleString()}. ` +
+        `Picks still missing result: ${data.stats?.totalPicksMissingResults ?? 0} across ${data.stats?.tournamentsWithGaps ?? 0} event(s).` +
+        (gapList ? ` Gaps: ${gapList}.` : "") +
+        ` Badges: ${data.badgesRefreshed ?? 0} leagues.`
+      );
+      const tr = await fetch("/api/admin/results").then((r) => r.json());
+      if (tr.tournaments) setTournaments(tr.tournaments);
+    } catch { setError("Failed full payout update"); }
+    finally { setFullPayoutUpdate(false); }
+  }
+
   if (loading) return <div className="flex flex-1 items-center justify-center min-h-screen"><div className="text-muted">Loading...</div></div>;
 
   return (
@@ -193,9 +222,20 @@ export default function AdminResultsPage() {
           <div className="flex flex-wrap gap-2">
             <button onClick={handlePopulateAll} className="bg-accent hover:bg-accent-light text-primary-dark font-semibold px-4 py-2 rounded-lg text-sm">Populate All Completed</button>
             <button onClick={handleRefreshPursePayouts} disabled={refreshingPurses} className="bg-primary hover:bg-primary-light text-white font-semibold px-4 py-2 rounded-lg text-sm disabled:opacity-50">{refreshingPurses ? "Syncing…" : "Sync purses & payouts"}</button>
+            <button onClick={handleUpdateAllPayouts} disabled={fullPayoutUpdate || refreshingPurses || finalizingAll}
+              className="bg-primary-dark hover:opacity-90 text-white font-semibold px-4 py-2 rounded-lg text-sm disabled:opacity-50">
+              {fullPayoutUpdate ? "Updating…" : "Update all payouts & stats"}
+            </button>
             <button onClick={handleCoverage} className="bg-surface-alt border border-border hover:border-primary font-medium px-4 py-2 rounded-lg text-sm">Coverage Report</button>
           </div>
         </div>
+
+        {(message || error) && (
+          <div className="mb-6 space-y-2">
+            {message && <p className="text-success font-medium text-sm break-words">{message}</p>}
+            {error && <p className="text-danger font-medium text-sm">{error}</p>}
+          </div>
+        )}
 
         <div className="bg-surface rounded-xl p-6 border border-border mb-6">
           <label className="block text-sm font-medium mb-2">Tournament</label>
@@ -263,9 +303,6 @@ export default function AdminResultsPage() {
               className="bg-primary hover:bg-primary-light text-white font-semibold px-6 py-2.5 rounded-lg disabled:opacity-50">
               {saving ? "Saving..." : "Save Results"}
             </button>
-
-            {message && <p className="mt-4 text-success font-medium">{message}</p>}
-            {error && <p className="mt-4 text-danger font-medium">{error}</p>}
           </>
         )}
       </div>

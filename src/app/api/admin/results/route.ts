@@ -5,7 +5,7 @@ import { syncTournamentResults, finalizeTournamentPayouts, finalizeRecentTournam
 import { notifyLeagueMembers } from '@/lib/notifications';
 import { recalculateBadges } from '@/lib/badges';
 import { logAction } from '@/lib/audit';
-import { query } from '@/lib/db';
+import { query, queryOne } from '@/lib/db';
 import { ensureSeeded } from '@/lib/seed';
 import { calculatePrizeMoney, parsePosition } from '@/lib/pga-schedule';
 
@@ -103,6 +103,55 @@ export async function POST(req: NextRequest) {
         user.id,
       );
       return NextResponse.json({ ...result, badgesRefreshed: leagues.length });
+    }
+
+    /** Full pipeline: finalize recent → ESPN populate-all → reconcile → purse sync & table payouts → coverage stats → badges */
+    if (body.action === 'update-all-payouts') {
+      const finalized = await finalizeRecentTournaments();
+      const populateAll = await populateAllCompletedTournaments();
+      const reconcileAfterPopulate = await reconcilePickPayouts();
+      const purseSync = await syncPursesAndRecalculateParticipantTotals('2025-2026');
+      const coverage = await getTournamentCoverage();
+      const seasonTotalRow = await queryOne<{ total: string }>(
+        `SELECT COALESCE(SUM(tr.prize_money), 0)::text as total
+         FROM tournament_results tr
+         JOIN tournaments t ON t.id = tr.tournament_id
+         WHERE t.season = '2025-2026'`,
+      );
+      const totalResultRows = coverage.tournaments.reduce((s, t) => s + t.resultRows, 0);
+      const totalPicksMissingResults = coverage.tournaments.reduce((s, t) => s + t.pickedWithoutResult, 0);
+      const tournamentsWithGaps = coverage.tournaments.filter((t) => t.pickedWithoutResult > 0).length;
+
+      const leagues = await query<{ league_id: string }>(
+        `SELECT DISTINCT p.league_id FROM picks p
+         JOIN tournaments t ON t.id = p.tournament_id
+         WHERE t.season = '2025-2026'`,
+      );
+      for (const l of leagues) {
+        await recalculateBadges(l.league_id);
+      }
+
+      await logAction(
+        'full_payout_update',
+        `finalize ${finalized.finalized?.length ?? 0}; populate +${populateAll.totalPopulated}; purse ${purseSync.resultRowsUpdated} rows; picks missing results ${totalPicksMissingResults}`,
+        undefined,
+        user.id,
+      );
+
+      return NextResponse.json({
+        finalized,
+        populateAll,
+        reconcileAfterPopulate,
+        purseSync,
+        coverage,
+        stats: {
+          totalResultRows,
+          totalPicksMissingResults,
+          tournamentsWithGaps,
+          seasonPrizeMoneyReported: Number(seasonTotalRow?.total ?? 0),
+        },
+        badgesRefreshed: leagues.length,
+      });
     }
 
     // Reconcile all picks (backfill missing payouts)
