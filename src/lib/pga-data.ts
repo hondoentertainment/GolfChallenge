@@ -245,8 +245,8 @@ export async function finalizeRecentTournaments(): Promise<{
   const pending = await query<{ id: string; name: string }>(
     `SELECT id, name FROM tournaments
      WHERE season = '2025-2026'
-       AND end_date < NOW()
-       AND end_date > NOW() - INTERVAL '14 days'
+       AND (end_date::date) < CURRENT_DATE
+       AND (end_date::date) > CURRENT_DATE - INTERVAL '14 days'
        AND (status IS NULL OR status <> 'completed')
      ORDER BY end_date ASC`
   );
@@ -276,7 +276,7 @@ export async function populateAllCompletedTournaments(): Promise<{
   const completed = await query<{ id: string; name: string }>(
     `SELECT id, name FROM tournaments
      WHERE season = '2025-2026'
-       AND end_date < NOW()
+       AND (end_date::date) < CURRENT_DATE
      ORDER BY end_date ASC`
   );
 

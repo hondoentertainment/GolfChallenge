@@ -342,7 +342,7 @@ export async function reconcilePickPayouts(): Promise<{ created: number; updated
     JOIN tournaments t ON t.id = p.tournament_id
     LEFT JOIN tournament_results tr ON tr.tournament_id = p.tournament_id AND tr.golfer_id = p.golfer_id
     WHERE t.season = $1
-      AND t.end_date < NOW()
+      AND (t.end_date::date) < CURRENT_DATE
       AND p.is_missed = FALSE
       AND tr.id IS NULL
   `, ['2025-2026']);
@@ -385,7 +385,7 @@ export async function reconcilePickPayouts(): Promise<{ created: number; updated
     JOIN tournaments t ON t.id = p.tournament_id
     LEFT JOIN tournament_results tr ON tr.tournament_id = p.tournament_id AND tr.golfer_id = p.golfer_id
     WHERE t.season = $1
-      AND t.end_date < NOW()
+      AND (t.end_date::date) < CURRENT_DATE
       AND p.is_missed = FALSE
       AND (tr.id IS NULL OR (tr.prize_money = 0 AND tr.position IS NOT NULL AND tr.position NOT IN ('MC','CUT','WD','DQ','DNS','MDF','')))
   `, ['2025-2026']);
@@ -481,7 +481,7 @@ export async function ensurePayoutsReconciled(): Promise<void> {
     JOIN tournaments t ON t.id = p.tournament_id
     LEFT JOIN tournament_results tr ON tr.tournament_id = p.tournament_id AND tr.golfer_id = p.golfer_id
     WHERE t.season = '2025-2026'
-      AND t.end_date < NOW()
+      AND (t.end_date::date) < CURRENT_DATE
       AND p.is_missed = FALSE
       AND (tr.id IS NULL OR (tr.prize_money = 0 AND tr.position IS NOT NULL AND tr.position NOT IN ('MC','CUT','WD','DQ','DNS','MDF','')))
   `);
