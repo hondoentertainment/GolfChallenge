@@ -222,16 +222,30 @@ export function allocatePurseByFinishPositions(
   return out;
 }
 
-/** Sync `tournaments.purse` from `PGA_SCHEDULE_2025_2026` for the given season. Returns rows updated. */
+/**
+ * Sync schedule fields from `PGA_SCHEDULE_2025_2026` into `tournaments` (dates, course,
+ * location, purse) so the DB matches the in-repo calendar after code changes. Returns rows updated.
+ */
 export async function syncTournamentPursesFromSchedule(season = '2025-2026'): Promise<number> {
   let updated = 0;
   for (const t of PGA_SCHEDULE_2025_2026) {
     const rows = await query<{ id: string }>(
       `UPDATE tournaments
-       SET purse = $1
-       WHERE name = $2 AND season = $3 AND purse IS DISTINCT FROM $1
+       SET purse = $1,
+           start_date = $4,
+           end_date = $5,
+           course = $6,
+           location = $7
+       WHERE name = $2 AND season = $3
+         AND (
+           purse IS DISTINCT FROM $1 OR
+           start_date IS DISTINCT FROM $4 OR
+           end_date IS DISTINCT FROM $5 OR
+           course IS DISTINCT FROM $6 OR
+           location IS DISTINCT FROM $7
+         )
        RETURNING id`,
-      [t.purse, t.name, season],
+      [t.purse, t.name, season, t.startDate, t.endDate, t.course, t.location],
     );
     updated += rows.length;
   }

@@ -18,7 +18,7 @@ describe('Chat', () => {
     mockExecute.mockResolvedValue(undefined);
     mockQuery.mockResolvedValue([{
       id: 'msg-1', league_id: 'league-1', user_id: 'user-1',
-      username: 'TestUser', message: 'Hello!', created_at: '2026-04-08T00:00:00Z',
+      username: 'TestUser', message: 'Hello!', created_at: '2026-05-07T00:00:00Z',
     }]);
 
     const msg = await sendMessage('league-1', 'user-1', 'Hello!');
@@ -38,19 +38,19 @@ describe('Chat', () => {
 
   test('getMessages with before param adds date filter', async () => {
     mockQuery.mockResolvedValue([]);
-    await getMessages('league-1', 25, '2026-04-08T00:00:00Z');
+    await getMessages('league-1', 25, '2026-05-07T00:00:00Z');
     expect(mockQuery).toHaveBeenCalledWith(
       expect.stringContaining('created_at < $2'),
-      ['league-1', '2026-04-08T00:00:00Z', 25]
+      ['league-1', '2026-05-07T00:00:00Z', 25]
     );
   });
 
   test('getMessagesSince fetches messages after timestamp', async () => {
     mockQuery.mockResolvedValue([]);
-    await getMessagesSince('league-1', '2026-04-08T00:00:00Z');
+    await getMessagesSince('league-1', '2026-05-07T00:00:00Z');
     expect(mockQuery).toHaveBeenCalledWith(
       expect.stringContaining('created_at > $2'),
-      ['league-1', '2026-04-08T00:00:00Z']
+      ['league-1', '2026-05-07T00:00:00Z']
     );
   });
 });

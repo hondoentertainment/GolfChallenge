@@ -18,6 +18,7 @@ import {
   getLeagueStandings,
   getLeaguePicks,
 } from './picks';
+import { syncTournamentPursesFromSchedule } from './pga-schedule';
 import { sendPickReminderEmail, sendWeeklyRecapEmail } from './email';
 import { createNotification } from './notifications';
 
@@ -198,6 +199,18 @@ async function reconcileJob(): Promise<JobResult> {
   };
 }
 
+async function syncScheduleFromCodeJob(): Promise<JobResult> {
+  const rowsUpdated = await syncTournamentPursesFromSchedule('2025-2026');
+  return {
+    ok: true,
+    summary:
+      rowsUpdated === 0
+        ? 'Tournament dates, venues, and purses already match `pga-schedule.ts` (0 rows changed)'
+        : `Applied in-repo PGA schedule: ${rowsUpdated} tournament row(s) updated (dates, course, location, purse)`,
+    data: { rowsUpdated },
+  };
+}
+
 export const JOBS: Record<string, JobDefinition> = {
   cleanup: {
     name: 'cleanup',
@@ -254,6 +267,14 @@ export const JOBS: Record<string, JobDefinition> = {
     description: 'Backfill missing payouts for every pick (including ESPN historical fallback for empty tournaments)',
     schedule: 'On every page view (throttled) + on-demand',
     run: reconcileJob,
+  },
+  'sync-schedule-from-code': {
+    name: 'sync-schedule-from-code',
+    label: 'Sync schedule from code',
+    description:
+      'Update `tournaments` start/end dates, course, location, and purse from `PGA_SCHEDULE_2025_2026` (run after editing the schedule or if DB is stale)',
+    schedule: 'On-demand',
+    run: syncScheduleFromCodeJob,
   },
 };
 
