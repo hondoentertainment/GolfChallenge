@@ -21,6 +21,7 @@ export default function AdminResultsPage() {
   const [finalizingAll, setFinalizingAll] = useState(false);
   const [refreshingPurses, setRefreshingPurses] = useState(false);
   const [fullPayoutUpdate, setFullPayoutUpdate] = useState(false);
+  const [refreshingLast5, setRefreshingLast5] = useState(false);
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
 
@@ -170,6 +171,30 @@ export default function AdminResultsPage() {
     finally { setRefreshingPurses(false); }
   }
 
+  async function handleRefreshLastCompleted() {
+    setRefreshingLast5(true); setError(""); setMessage("");
+    try {
+      const res = await fetch("/api/admin/results", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "refresh-last-completed", count: 5 }),
+      });
+      const data = await res.json();
+      if (!res.ok) { setError(data.error); return; }
+      const lines = (data.tournaments ?? []).map(
+        (t: { name: string; historical: { populated: number }; payoutRowsUpdated: number }) =>
+          `${t.name}: ESPN ${t.historical.populated}, table payouts ${t.payoutRowsUpdated} rows`,
+      );
+      setMessage(
+        `Re-synced last ${data.tournaments?.length ?? 0} event(s). ${lines.join(" · ")}. ` +
+        `Reconcile +${data.reconciled?.created ?? 0}/${data.reconciled?.updated ?? 0}. Badges: ${data.badgesRefreshed ?? 0} leagues.`,
+      );
+      const tr = await fetch("/api/admin/results").then((r) => r.json());
+      if (tr.tournaments) setTournaments(tr.tournaments);
+    } catch { setError("Failed to refresh recent events"); }
+    finally { setRefreshingLast5(false); }
+  }
+
   async function handleUpdateAllPayouts() {
     setFullPayoutUpdate(true); setError(""); setMessage("");
     try {
@@ -218,11 +243,15 @@ export default function AdminResultsPage() {
 
         <div className="bg-surface rounded-xl p-6 border border-border mb-6">
           <h3 className="font-semibold mb-2">Season-Wide Actions</h3>
-          <p className="text-xs text-muted mb-3">Populate every completed tournament from ESPN historical data, then verify coverage. Use <strong>Sync purses &amp; payouts</strong> after updating prize purses in code so all standings match the latest purse (ties split PGA-style). Production checks: <code className="text-xs bg-surface px-1 rounded">GET /api/health</code></p>
+          <p className="text-xs text-muted mb-3">Populate every completed tournament from ESPN historical data, then verify coverage. Use <strong>Sync purses &amp; payouts</strong> after updating prize purses in code so all standings match the latest purse (ties split PGA-style). <strong>Re-sync last 5</strong> overwrites stale prize rows for the five most recent finished events (ESPN + tie table). Production checks: <code className="text-xs bg-surface px-1 rounded">GET /api/health</code></p>
           <div className="flex flex-wrap gap-2">
             <button onClick={handlePopulateAll} className="bg-accent hover:bg-accent-light text-primary-dark font-semibold px-4 py-2 rounded-lg text-sm">Populate All Completed</button>
             <button onClick={handleRefreshPursePayouts} disabled={refreshingPurses} className="bg-primary hover:bg-primary-light text-white font-semibold px-4 py-2 rounded-lg text-sm disabled:opacity-50">{refreshingPurses ? "Syncing…" : "Sync purses & payouts"}</button>
-            <button onClick={handleUpdateAllPayouts} disabled={fullPayoutUpdate || refreshingPurses || finalizingAll}
+            <button onClick={handleRefreshLastCompleted} disabled={refreshingLast5 || refreshingPurses || fullPayoutUpdate}
+              className="bg-amber-600 hover:bg-amber-500 text-white font-semibold px-4 py-2 rounded-lg text-sm disabled:opacity-50">
+              {refreshingLast5 ? "Re-syncing…" : "Re-sync last 5 completed"}
+            </button>
+            <button onClick={handleUpdateAllPayouts} disabled={fullPayoutUpdate || refreshingPurses || finalizingAll || refreshingLast5}
               className="bg-primary-dark hover:opacity-90 text-white font-semibold px-4 py-2 rounded-lg text-sm disabled:opacity-50">
               {fullPayoutUpdate ? "Updating…" : "Update all payouts & stats"}
             </button>

@@ -2,8 +2,8 @@
 // Uses ESPN's public API for leaderboard data
 
 import { query, queryOne } from './db';
-import { updateTournamentResult, updateTournamentStatus, getGolfers, getTournament, getTournaments, reconcilePickPayouts } from './picks';
-import { calculatePrizeMoney, parsePosition } from './pga-schedule';
+import { updateTournamentResult, updateTournamentStatus, getGolfers, getTournament, reconcilePickPayouts, recalculateTournamentResultPayoutsFromPurse } from './picks';
+import { calculatePrizeMoney, parsePosition, syncTournamentPursesFromSchedule } from './pga-schedule';
 import { recalculateBadges } from './badges';
 import { notifyLeagueMembers } from './notifications';
 import { logAction } from './audit';
@@ -86,37 +86,47 @@ export async function fetchPGALeaderboard(): Promise<ESPNResponse | null> {
   }
 }
 
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
 // Fetch a specific historical event's final leaderboard from ESPN. Used to
 // populate past tournaments after they've dropped off the live scoreboard.
 export async function fetchESPNEventSummary(eventId: string): Promise<{ competitors: ESPNCompetitor[]; eventName: string } | null> {
-  try {
-    const res = await fetch(`${ESPN_EVENT_SUMMARY_URL}?event=${eventId}`, { next: { revalidate: 3600 } });
-    if (!res.ok) return null;
-    const data = await res.json();
+  const url = `${ESPN_EVENT_SUMMARY_URL}?event=${eventId}`;
+  for (let attempt = 0; attempt < 3; attempt++) {
+    try {
+      if (attempt > 0) await sleep(500 * attempt);
+      const res = await fetch(url, { next: { revalidate: 3600 } });
+      if (!res.ok) continue;
+      const data = await res.json();
 
-    // ESPN's summary shape differs from the scoreboard. Competitor data is
-    // usually nested under `leaderboard[0].players` or `competitions[0].competitors`
-    // depending on the endpoint version. Handle both.
-    const leaderboard = data.leaderboard?.[0] || data.header?.competitions?.[0];
-    const competitors: ESPNCompetitor[] = (leaderboard?.players || leaderboard?.competitors || []).map((p: { athlete?: { displayName?: string }; fullName?: string; displayName?: string; status?: { position?: { displayName?: string } }; position?: { displayName?: string }; score?: { displayValue?: string } | string; earnings?: number; prizeMoney?: number }) => ({
-      athlete: {
-        displayName: p.athlete?.displayName || p.fullName || p.displayName || '',
-      },
-      status: {
-        position: {
-          displayName: p.status?.position?.displayName || p.position?.displayName || '',
+      // ESPN's summary shape differs from the scoreboard. Competitor data is
+      // usually nested under `leaderboard[0].players` or `competitions[0].competitors`
+      // depending on the endpoint version. Handle both.
+      const leaderboard = data.leaderboard?.[0] || data.header?.competitions?.[0];
+      const competitors: ESPNCompetitor[] = (leaderboard?.players || leaderboard?.competitors || []).map((p: { athlete?: { displayName?: string }; fullName?: string; displayName?: string; status?: { position?: { displayName?: string } }; position?: { displayName?: string }; score?: { displayValue?: string } | string; earnings?: number; prizeMoney?: number }) => ({
+        athlete: {
+          displayName: p.athlete?.displayName || p.fullName || p.displayName || '',
         },
-      },
-      score: typeof p.score === 'object' && p.score !== null
-        ? { displayValue: p.score.displayValue || '' }
-        : { displayValue: typeof p.score === 'string' ? p.score : '' },
-      earnings: p.earnings ?? p.prizeMoney ?? 0,
-    }));
+        status: {
+          position: {
+            displayName: p.status?.position?.displayName || p.position?.displayName || '',
+          },
+        },
+        score: typeof p.score === 'object' && p.score !== null
+          ? { displayValue: p.score.displayValue || '' }
+          : { displayValue: typeof p.score === 'string' ? p.score : '' },
+        earnings: p.earnings ?? p.prizeMoney ?? 0,
+      }));
 
-    return { competitors, eventName: data.header?.name || '' };
-  } catch {
-    return null;
+      if (competitors.length === 0) continue;
+      return { competitors, eventName: data.header?.name || '' };
+    } catch {
+      continue;
+    }
   }
+  return null;
 }
 
 export async function syncTournamentResults(tournamentId: string): Promise<{ updated: number; errors: string[]; espnHadEvent: boolean }> {
@@ -268,7 +278,7 @@ export async function finalizeRecentTournaments(): Promise<{
 // Populate every completed tournament in the season from ESPN historical data.
 // This is the brute-force "ensure every golfer is listed for every event" sweep
 // that runs at cold-start seed time and on-demand via admin. It's idempotent:
-// populateHistoricalTournament never overwrites audit-approved rows.
+// populateHistoricalTournament (default) does not overwrite rows that already have prize_money > 0.
 export async function populateAllCompletedTournaments(): Promise<{
   tournaments: { name: string; populated: number; skipped: number; errors: number }[];
   totalPopulated: number;
@@ -363,12 +373,19 @@ export async function getTournamentCoverage(): Promise<{
 // endpoint and populate tournament_results for every competitor. Use this when
 // the event has dropped off the live scoreboard (e.g. syncing the Masters after
 // RBC Heritage has started). Returns the count of rows created/updated.
-export async function populateHistoricalTournament(tournamentId: string): Promise<{
+//
+// `force: true` overwrites existing result rows even when prize_money > 0 (default
+// skips those so audit-approved seeds are preserved).
+export async function populateHistoricalTournament(
+  tournamentId: string,
+  options?: { force?: boolean },
+): Promise<{
   populated: number;
   skipped: number;
   errors: string[];
   auditWarnings: number;
 }> {
+  const force = options?.force === true;
   const tournament = await getTournament(tournamentId);
   if (!tournament) return { populated: 0, skipped: 0, errors: ['Tournament not found'], auditWarnings: 0 };
 
@@ -448,7 +465,7 @@ export async function populateHistoricalTournament(tournamentId: string): Promis
         [tournamentId, golferId]
       );
 
-      if (existing && existing.prize_money > 0) {
+      if (!force && existing && existing.prize_money > 0) {
         // Keep the existing audit-approved value, don't overwrite
         continue;
       }
@@ -461,6 +478,65 @@ export async function populateHistoricalTournament(tournamentId: string): Promis
   }
 
   return { populated, skipped, errors, auditWarnings: audit.warnings.length };
+}
+
+/** Last N completed events by `end_date`: sync purses, force ESPN historical onto results, PGA tie-table payouts, reconcile, badges. */
+export async function refreshLastCompletedTournaments(count = 5): Promise<{
+  pursesSynced: number;
+  tournaments: {
+    id: string;
+    name: string;
+    historical: {
+      populated: number;
+      skipped: number;
+      errors: string[];
+      auditWarnings: number;
+    };
+    payoutRowsUpdated: number;
+  }[];
+  reconciled: Awaited<ReturnType<typeof reconcilePickPayouts>>;
+  badgesRefreshed: number;
+}> {
+  const pursesSynced = await syncTournamentPursesFromSchedule('2025-2026');
+
+  const list = await query<{ id: string; name: string }>(
+    `SELECT id, name FROM tournaments
+     WHERE season = '2025-2026' AND (end_date::date) < CURRENT_DATE
+     ORDER BY end_date DESC
+     LIMIT $1`,
+    [count],
+  );
+
+  const tournaments: {
+    id: string;
+    name: string;
+    historical: {
+      populated: number;
+      skipped: number;
+      errors: string[];
+      auditWarnings: number;
+    };
+    payoutRowsUpdated: number;
+  }[] = [];
+
+  for (const t of list) {
+    const historical = await populateHistoricalTournament(t.id, { force: true });
+    const { updated: payoutRowsUpdated } = await recalculateTournamentResultPayoutsFromPurse(t.id);
+    tournaments.push({ id: t.id, name: t.name, historical, payoutRowsUpdated });
+  }
+
+  const reconciled = await reconcilePickPayouts();
+
+  const leagues = await query<{ league_id: string }>(
+    `SELECT DISTINCT p.league_id FROM picks p
+     JOIN tournaments t ON t.id = p.tournament_id
+     WHERE t.season = '2025-2026'`,
+  );
+  for (const l of leagues) {
+    await recalculateBadges(l.league_id);
+  }
+
+  return { pursesSynced, tournaments, reconciled, badgesRefreshed: leagues.length };
 }
 
 // Get the tournament ID that matches the current ESPN event

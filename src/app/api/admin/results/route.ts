@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getCurrentUser } from '@/lib/auth';
 import { updateTournamentResult, updateTournamentStatus, getTournaments, getTournament, getGolfers, reconcilePickPayouts, syncPursesAndRecalculateParticipantTotals } from '@/lib/picks';
-import { syncTournamentResults, finalizeTournamentPayouts, finalizeRecentTournaments, populateHistoricalTournament, populateAllCompletedTournaments, getTournamentCoverage } from '@/lib/pga-data';
+import { syncTournamentResults, finalizeTournamentPayouts, finalizeRecentTournaments, populateHistoricalTournament, populateAllCompletedTournaments, getTournamentCoverage, refreshLastCompletedTournaments } from '@/lib/pga-data';
 import { notifyLeagueMembers } from '@/lib/notifications';
 import { recalculateBadges } from '@/lib/badges';
 import { logAction } from '@/lib/audit';
@@ -84,6 +84,22 @@ export async function POST(req: NextRequest) {
     if (body.action === 'coverage') {
       const coverage = await getTournamentCoverage();
       return NextResponse.json(coverage);
+    }
+
+    /** Force ESPN historical + PGA purse table for the last N completed tournaments (fixes stale $). */
+    if (body.action === 'refresh-last-completed') {
+      const count =
+        typeof body.count === 'number' && Number.isInteger(body.count) && body.count > 0 && body.count <= 20
+          ? body.count
+          : 5;
+      const result = await refreshLastCompletedTournaments(count);
+      await logAction(
+        'refresh_last_completed',
+        `${count} tournaments: ${result.tournaments.map((t) => t.name).join('; ')}; reconciled +${result.reconciled.created}/${result.reconciled.updated}`,
+        undefined,
+        user.id,
+      );
+      return NextResponse.json(result);
     }
 
     if (body.action === 'refresh-purse-payouts') {

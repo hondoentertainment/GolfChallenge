@@ -8,6 +8,7 @@ import {
   syncTournamentResults,
   finalizeRecentTournaments,
   populateAllCompletedTournaments,
+  refreshLastCompletedTournaments,
 } from './pga-data';
 import {
   getCurrentTournament,
@@ -211,6 +212,18 @@ async function syncScheduleFromCodeJob(): Promise<JobResult> {
   };
 }
 
+async function refreshLastCompletedJob(): Promise<JobResult> {
+  const result = await refreshLastCompletedTournaments(5);
+  const hist = result.tournaments.map(
+    (t) => `${t.name}: ESPN +${t.historical.populated}, payouts ${t.payoutRowsUpdated} rows`,
+  );
+  return {
+    ok: true,
+    summary: `Last ${result.tournaments.length} event(s): ${hist.join('; ')}; reconcile +${result.reconciled.created}/${result.reconciled.updated}; badges ${result.badgesRefreshed} leagues`,
+    data: result,
+  };
+}
+
 export const JOBS: Record<string, JobDefinition> = {
   cleanup: {
     name: 'cleanup',
@@ -275,6 +288,14 @@ export const JOBS: Record<string, JobDefinition> = {
       'Update `tournaments` start/end dates, course, location, and purse from `PGA_SCHEDULE_2025_2026` (run after editing the schedule or if DB is stale)',
     schedule: 'On-demand',
     run: syncScheduleFromCodeJob,
+  },
+  'refresh-last-5-completed': {
+    name: 'refresh-last-5-completed',
+    label: 'Refresh last 5 completed events',
+    description:
+      'Re-fetch ESPN historical for the 5 most recent finished events, overwrite stale result $, apply PGA purse tie table, reconcile picks, refresh badges',
+    schedule: 'On-demand',
+    run: refreshLastCompletedJob,
   },
 };
 

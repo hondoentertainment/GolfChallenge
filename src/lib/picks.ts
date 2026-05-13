@@ -420,30 +420,48 @@ export async function reconcilePickPayouts(): Promise<{ created: number; updated
 }
 
 /**
+ * Rewrite prize_money for numeric finishers in one tournament from `tournaments.purse`
+ * (ties split combined places). MC/CUT/WD rows are left unchanged.
+ */
+export async function recalculateTournamentResultPayoutsFromPurse(
+  tournamentId: string,
+): Promise<{ updated: number; hadResultRows: boolean }> {
+  const t = await queryOne<{ name: string; purse: number }>(
+    `SELECT name, purse FROM tournaments WHERE id = $1`,
+    [tournamentId],
+  );
+  if (!t) return { updated: 0, hadResultRows: false };
+  const rows = await query<{ id: string; position: string }>(
+    `SELECT id, position FROM tournament_results WHERE tournament_id = $1`,
+    [tournamentId],
+  );
+  if (rows.length === 0) return { updated: 0, hadResultRows: false };
+  const alloc = allocatePurseByFinishPositions(t.purse, t.name, rows);
+  let updated = 0;
+  for (const [id, money] of alloc) {
+    await execute(`UPDATE tournament_results SET prize_money = $1 WHERE id = $2`, [money, id]);
+    updated++;
+  }
+  return { updated, hadResultRows: true };
+}
+
+/**
  * Rewrite prize_money for every numeric finisher from current `tournaments.purse`
  * (ties split combined places). MC/CUT/WD rows are left unchanged.
  */
 export async function recalculateAllTournamentResultPayoutsFromPurses(
   season = '2025-2026',
 ): Promise<{ tournamentsWithResults: number; resultRowsUpdated: number }> {
-  const tournaments = await query<{ id: string; name: string; purse: number }>(
-    `SELECT id, name, purse FROM tournaments WHERE season = $1`,
+  const tournaments = await query<{ id: string }>(
+    `SELECT id FROM tournaments WHERE season = $1`,
     [season],
   );
   let tournamentsWithResults = 0;
   let resultRowsUpdated = 0;
   for (const t of tournaments) {
-    const rows = await query<{ id: string; position: string }>(
-      `SELECT id, position FROM tournament_results WHERE tournament_id = $1`,
-      [t.id],
-    );
-    if (rows.length === 0) continue;
-    tournamentsWithResults++;
-    const alloc = allocatePurseByFinishPositions(t.purse, t.name, rows);
-    for (const [id, money] of alloc) {
-      await execute(`UPDATE tournament_results SET prize_money = $1 WHERE id = $2`, [money, id]);
-      resultRowsUpdated++;
-    }
+    const { updated, hadResultRows } = await recalculateTournamentResultPayoutsFromPurse(t.id);
+    if (hadResultRows) tournamentsWithResults++;
+    resultRowsUpdated += updated;
   }
   return { tournamentsWithResults, resultRowsUpdated };
 }

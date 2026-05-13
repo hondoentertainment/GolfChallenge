@@ -11,7 +11,8 @@
     "start": "next start",
     "lint": "eslint",
     "test": "jest",
-    "recalc-earnings": "node --env-file=.env.local ./node_modules/tsx/dist/cli.mjs scripts/recalculate-participant-earnings.ts"
+    "recalc-earnings": "node --env-file=.env.local ./node_modules/tsx/dist/cli.mjs scripts/recalculate-participant-earnings.ts",
+    "refresh-last-completed": "node --env-file=.env.local ./node_modules/tsx/dist/cli.mjs scripts/refresh-last-completed.ts"
   },
   "dependencies": {
     "@neondatabase/serverless": "^1.1.0",
