@@ -2,7 +2,7 @@
 // Uses ESPN's public API for leaderboard data
 
 import { query, queryOne } from './db';
-import { updateTournamentResult, updateTournamentStatus, getGolfers, getTournament, reconcilePickPayouts, recalculateTournamentResultPayoutsFromPurse } from './picks';
+import { updateTournamentResult, updateTournamentStatus, getGolfers, getTournament, reconcilePickPayouts, recalculateTournamentResultPayoutsFromPurse, recalculateAllTournamentResultPayoutsFromPurses } from './picks';
 import { calculatePrizeMoney, parsePosition, syncTournamentPursesFromSchedule } from './pga-schedule';
 import { recalculateBadges } from './badges';
 import { notifyLeagueMembers } from './notifications';
@@ -279,7 +279,8 @@ export async function finalizeRecentTournaments(): Promise<{
 // This is the brute-force "ensure every golfer is listed for every event" sweep
 // that runs at cold-start seed time and on-demand via admin. It's idempotent:
 // populateHistoricalTournament (default) does not overwrite rows that already have prize_money > 0.
-export async function populateAllCompletedTournaments(): Promise<{
+// Pass `{ force: true }` to overwrite existing position/prize rows from ESPN (full refresh).
+export async function populateAllCompletedTournaments(options?: { force?: boolean }): Promise<{
   tournaments: { name: string; populated: number; skipped: number; errors: number }[];
   totalPopulated: number;
 }> {
@@ -290,12 +291,15 @@ export async function populateAllCompletedTournaments(): Promise<{
      ORDER BY end_date ASC`
   );
 
+  const force = options?.force === true;
+  const histOpts = force ? { force: true } : undefined;
+
   const tournaments = [];
   let totalPopulated = 0;
 
   for (const t of completed) {
     try {
-      const result = await populateHistoricalTournament(t.id);
+      const result = await populateHistoricalTournament(t.id, histOpts);
       tournaments.push({
         name: t.name,
         populated: result.populated,
@@ -315,6 +319,42 @@ export async function populateAllCompletedTournaments(): Promise<{
   }
 
   return { tournaments, totalPopulated };
+}
+
+/**
+ * Full refresh: sync purses from code, force ESPN historical for every completed event,
+ * reapply PGA tie-table payouts from positions, reconcile picks, refresh badges.
+ */
+export async function refreshAllCompletedTournamentFinishes(): Promise<{
+  pursesSynced: number;
+  populateAll: Awaited<ReturnType<typeof populateAllCompletedTournaments>>;
+  tournamentsWithResults: number;
+  resultRowsUpdated: number;
+  reconciled: Awaited<ReturnType<typeof reconcilePickPayouts>>;
+  badgesRefreshed: number;
+}> {
+  const pursesSynced = await syncTournamentPursesFromSchedule('2025-2026');
+  const populateAll = await populateAllCompletedTournaments({ force: true });
+  const { tournamentsWithResults, resultRowsUpdated } = await recalculateAllTournamentResultPayoutsFromPurses('2025-2026');
+  const reconciled = await reconcilePickPayouts();
+
+  const leagues = await query<{ league_id: string }>(
+    `SELECT DISTINCT p.league_id FROM picks p
+     JOIN tournaments t ON t.id = p.tournament_id
+     WHERE t.season = '2025-2026'`,
+  );
+  for (const l of leagues) {
+    await recalculateBadges(l.league_id);
+  }
+
+  return {
+    pursesSynced,
+    populateAll,
+    tournamentsWithResults,
+    resultRowsUpdated,
+    reconciled,
+    badgesRefreshed: leagues.length,
+  };
 }
 
 // Coverage report: for each tournament, count how many golfers have a result row.

@@ -22,6 +22,7 @@ export default function AdminResultsPage() {
   const [refreshingPurses, setRefreshingPurses] = useState(false);
   const [fullPayoutUpdate, setFullPayoutUpdate] = useState(false);
   const [refreshingLast5, setRefreshingLast5] = useState(false);
+  const [refreshingAllFinishes, setRefreshingAllFinishes] = useState(false);
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
 
@@ -195,6 +196,27 @@ export default function AdminResultsPage() {
     finally { setRefreshingLast5(false); }
   }
 
+  async function handleRefreshAllCompletedFinishes() {
+    setRefreshingAllFinishes(true); setError(""); setMessage("");
+    try {
+      const res = await fetch("/api/admin/results", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "refresh-all-completed-finishes" }),
+      });
+      const data = await res.json();
+      if (!res.ok) { setError(data.error); return; }
+      setMessage(
+        `All completed events refreshed. ESPN +${data.populateAll?.totalPopulated ?? 0} rows. ` +
+        `Purse tie-table updates: ${data.resultRowsUpdated ?? 0}. ` +
+        `Reconcile +${data.reconciled?.created ?? 0}/${data.reconciled?.updated ?? 0}. Badges: ${data.badgesRefreshed ?? 0} leagues.`,
+      );
+      const tr = await fetch("/api/admin/results").then((r) => r.json());
+      if (tr.tournaments) setTournaments(tr.tournaments);
+    } catch { setError("Failed to refresh all completed finishes"); }
+    finally { setRefreshingAllFinishes(false); }
+  }
+
   async function handleUpdateAllPayouts() {
     setFullPayoutUpdate(true); setError(""); setMessage("");
     try {
@@ -247,11 +269,15 @@ export default function AdminResultsPage() {
           <div className="flex flex-wrap gap-2">
             <button onClick={handlePopulateAll} className="bg-accent hover:bg-accent-light text-primary-dark font-semibold px-4 py-2 rounded-lg text-sm">Populate All Completed</button>
             <button onClick={handleRefreshPursePayouts} disabled={refreshingPurses} className="bg-primary hover:bg-primary-light text-white font-semibold px-4 py-2 rounded-lg text-sm disabled:opacity-50">{refreshingPurses ? "Syncing…" : "Sync purses & payouts"}</button>
-            <button onClick={handleRefreshLastCompleted} disabled={refreshingLast5 || refreshingPurses || fullPayoutUpdate}
+            <button onClick={handleRefreshLastCompleted} disabled={refreshingLast5 || refreshingPurses || fullPayoutUpdate || refreshingAllFinishes}
               className="bg-amber-600 hover:bg-amber-500 text-white font-semibold px-4 py-2 rounded-lg text-sm disabled:opacity-50">
               {refreshingLast5 ? "Re-syncing…" : "Re-sync last 5 completed"}
             </button>
-            <button onClick={handleUpdateAllPayouts} disabled={fullPayoutUpdate || refreshingPurses || finalizingAll || refreshingLast5}
+            <button onClick={handleRefreshAllCompletedFinishes} disabled={refreshingAllFinishes || refreshingLast5 || refreshingPurses || fullPayoutUpdate || finalizingAll}
+              className="bg-orange-700 hover:bg-orange-600 text-white font-semibold px-4 py-2 rounded-lg text-sm disabled:opacity-50">
+              {refreshingAllFinishes ? "Refreshing all…" : "Refresh all completed finishes"}
+            </button>
+            <button onClick={handleUpdateAllPayouts} disabled={fullPayoutUpdate || refreshingPurses || finalizingAll || refreshingLast5 || refreshingAllFinishes}
               className="bg-primary-dark hover:opacity-90 text-white font-semibold px-4 py-2 rounded-lg text-sm disabled:opacity-50">
               {fullPayoutUpdate ? "Updating…" : "Update all payouts & stats"}
             </button>

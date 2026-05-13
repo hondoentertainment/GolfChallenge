@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getCurrentUser } from '@/lib/auth';
 import { updateTournamentResult, updateTournamentStatus, getTournaments, getTournament, getGolfers, reconcilePickPayouts, syncPursesAndRecalculateParticipantTotals } from '@/lib/picks';
-import { syncTournamentResults, finalizeTournamentPayouts, finalizeRecentTournaments, populateHistoricalTournament, populateAllCompletedTournaments, getTournamentCoverage, refreshLastCompletedTournaments } from '@/lib/pga-data';
+import { syncTournamentResults, finalizeTournamentPayouts, finalizeRecentTournaments, populateHistoricalTournament, populateAllCompletedTournaments, getTournamentCoverage, refreshLastCompletedTournaments, refreshAllCompletedTournamentFinishes } from '@/lib/pga-data';
 import { notifyLeagueMembers } from '@/lib/notifications';
 import { recalculateBadges } from '@/lib/badges';
 import { logAction } from '@/lib/audit';
@@ -72,10 +72,22 @@ export async function POST(req: NextRequest) {
     }
 
     // Populate EVERY completed tournament in the season from ESPN historical data.
-    // Idempotent: audit-approved rows are never overwritten.
+    // Idempotent: does not overwrite rows that already have prize_money > 0.
     if (body.action === 'populate-all') {
       const result = await populateAllCompletedTournaments();
       await reconcilePickPayouts();
+      return NextResponse.json(result);
+    }
+
+    /** Force ESPN refresh for every completed event + purse tie table + reconcile + badges. */
+    if (body.action === 'refresh-all-completed-finishes') {
+      const result = await refreshAllCompletedTournamentFinishes();
+      await logAction(
+        'refresh_all_completed_finishes',
+        `populate +${result.populateAll.totalPopulated}; payouts ${result.resultRowsUpdated} rows; reconcile +${result.reconciled.created}/${result.reconciled.updated}`,
+        undefined,
+        user.id,
+      );
       return NextResponse.json(result);
     }
 

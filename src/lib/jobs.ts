@@ -9,6 +9,7 @@ import {
   finalizeRecentTournaments,
   populateAllCompletedTournaments,
   refreshLastCompletedTournaments,
+  refreshAllCompletedTournamentFinishes,
 } from './pga-data';
 import {
   getCurrentTournament,
@@ -224,6 +225,15 @@ async function refreshLastCompletedJob(): Promise<JobResult> {
   };
 }
 
+async function refreshAllCompletedFinishesJob(): Promise<JobResult> {
+  const result = await refreshAllCompletedTournamentFinishes();
+  return {
+    ok: true,
+    summary: `All completed: purses ${result.pursesSynced}; ESPN rows +${result.populateAll.totalPopulated}; payout recalc ${result.resultRowsUpdated}; reconcile +${result.reconciled.created}/${result.reconciled.updated}; badges ${result.badgesRefreshed}`,
+    data: result,
+  };
+}
+
 export const JOBS: Record<string, JobDefinition> = {
   cleanup: {
     name: 'cleanup',
@@ -296,6 +306,14 @@ export const JOBS: Record<string, JobDefinition> = {
       'Re-fetch ESPN historical for the 5 most recent finished events, overwrite stale result $, apply PGA purse tie table, reconcile picks, refresh badges',
     schedule: 'On-demand',
     run: refreshLastCompletedJob,
+  },
+  'refresh-all-completed-finishes': {
+    name: 'refresh-all-completed-finishes',
+    label: 'Refresh all completed finishes',
+    description:
+      'Every finished event: sync purses, force ESPN historical for all players, PGA tie-table payouts, reconcile, badges (slow; use after bad bulk data)',
+    schedule: 'On-demand',
+    run: refreshAllCompletedFinishesJob,
   },
 };
 
