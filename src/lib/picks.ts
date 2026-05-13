@@ -416,6 +416,11 @@ export async function reconcilePickPayouts(): Promise<{ created: number; updated
     }
   }
 
+  const tournamentsToRecalc = new Set(orphanedPicks.map((r) => r.tournament_id));
+  for (const tid of tournamentsToRecalc) {
+    await recalculateTournamentResultPayoutsFromPurse(tid);
+  }
+
   return { created, updated, historicalFetched };
 }
 
@@ -507,4 +512,160 @@ export async function ensurePayoutsReconciled(): Promise<void> {
   if (Number(orphanCount?.count) > 0) {
     await reconcilePickPayouts();
   }
+}
+
+/** Row where stored `tournament_results.prize_money` ≠ tie-table allocation from purse + positions. */
+export type PayoutDriftAuditRow = {
+  tournamentId: string;
+  tournamentName: string;
+  resultId: string;
+  golferName: string;
+  position: string;
+  stored: number;
+  expected: number;
+};
+
+/** Pick on a past event that still lacks result data or has $0 despite a numeric finish. */
+export type PickValueAuditIssue = {
+  issue: 'missing_result' | 'zero_prize_numeric_finish';
+  leagueName: string;
+  username: string;
+  tournamentName: string;
+  golferName: string;
+};
+
+export type PickValueAuditReport = {
+  season: string;
+  completedTournamentsWithResults: number;
+  payoutDrifts: PayoutDriftAuditRow[];
+  pickIssues: PickValueAuditIssue[];
+  summary: {
+    totalPastNonMissedPicks: number;
+    picksMissingResultData: number;
+    picksZeroPrizeNumericFinish: number;
+    resultRowsOutOfSyncWithTieTable: number;
+    ok: boolean;
+  };
+};
+
+/**
+ * Read-only audit for admin: compares every finisher row to `allocatePurseByFinishPositions`,
+ * and flags picks on completed events that lack results or have $0 with a paying position.
+ */
+export async function auditAllPickValues(season = '2025-2026'): Promise<PickValueAuditReport> {
+  const payoutDrifts: PayoutDriftAuditRow[] = [];
+
+  const completedTournaments = await query<{ id: string; name: string; purse: number }>(
+    `SELECT t.id, t.name, t.purse
+     FROM tournaments t
+     WHERE t.season = $1 AND t.is_excluded = 0
+       AND (t.end_date::date) < CURRENT_DATE
+       AND EXISTS (SELECT 1 FROM tournament_results tr WHERE tr.tournament_id = t.id)`,
+    [season],
+  );
+
+  for (const t of completedTournaments) {
+    const rows = await query<{
+      id: string;
+      position: string;
+      prize_money: number;
+      golfer_name: string;
+    }>(
+      `SELECT tr.id, tr.position, tr.prize_money::int as prize_money, g.name as golfer_name
+       FROM tournament_results tr
+       JOIN golfers g ON g.id = tr.golfer_id
+       WHERE tr.tournament_id = $1`,
+      [t.id],
+    );
+    const alloc = allocatePurseByFinishPositions(
+      t.purse,
+      t.name,
+      rows.map((r) => ({ id: r.id, position: r.position })),
+    );
+    for (const r of rows) {
+      const expected = alloc.get(r.id);
+      if (expected === undefined) continue;
+      if (r.prize_money !== expected) {
+        payoutDrifts.push({
+          tournamentId: t.id,
+          tournamentName: t.name,
+          resultId: r.id,
+          golferName: r.golfer_name,
+          position: r.position,
+          stored: r.prize_money,
+          expected,
+        });
+      }
+    }
+  }
+
+  const pickIssues: PickValueAuditIssue[] = [];
+  let picksMissingResultData = 0;
+  let picksZeroPrizeNumericFinish = 0;
+
+  const picksAudit = await query<{
+    league_name: string;
+    username: string;
+    tournament_name: string;
+    golfer_name: string;
+    position: string | null;
+    prize_money: number | null;
+    tr_id: string | null;
+  }>(
+    `SELECT l.name as league_name, u.username, t.name as tournament_name, g.name as golfer_name,
+      tr.position, tr.prize_money::int as prize_money, tr.id as tr_id
+     FROM picks p
+     JOIN leagues l ON l.id = p.league_id
+     JOIN users u ON u.id = p.user_id
+     JOIN tournaments t ON t.id = p.tournament_id
+     JOIN golfers g ON g.id = p.golfer_id
+     LEFT JOIN tournament_results tr ON tr.tournament_id = p.tournament_id AND tr.golfer_id = p.golfer_id
+     WHERE t.season = $1
+       AND (t.end_date::date) < CURRENT_DATE
+       AND (p.is_missed IS NOT TRUE)`,
+    [season],
+  );
+
+  for (const row of picksAudit) {
+    const hasPos = row.position != null && String(row.position).trim() !== '';
+    if (!row.tr_id || !hasPos) {
+      pickIssues.push({
+        issue: 'missing_result',
+        leagueName: row.league_name,
+        username: row.username,
+        tournamentName: row.tournament_name,
+        golferName: row.golfer_name,
+      });
+      picksMissingResultData++;
+      continue;
+    }
+    const pos = parsePosition(row.position!);
+    if (pos > 0 && (row.prize_money === null || row.prize_money === 0)) {
+      pickIssues.push({
+        issue: 'zero_prize_numeric_finish',
+        leagueName: row.league_name,
+        username: row.username,
+        tournamentName: row.tournament_name,
+        golferName: row.golfer_name,
+      });
+      picksZeroPrizeNumericFinish++;
+    }
+  }
+
+  return {
+    season,
+    completedTournamentsWithResults: completedTournaments.length,
+    payoutDrifts,
+    pickIssues,
+    summary: {
+      totalPastNonMissedPicks: picksAudit.length,
+      picksMissingResultData,
+      picksZeroPrizeNumericFinish,
+      resultRowsOutOfSyncWithTieTable: payoutDrifts.length,
+      ok:
+        payoutDrifts.length === 0 &&
+        picksMissingResultData === 0 &&
+        picksZeroPrizeNumericFinish === 0,
+    },
+  };
 }

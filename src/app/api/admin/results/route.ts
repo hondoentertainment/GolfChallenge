@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getCurrentUser } from '@/lib/auth';
-import { updateTournamentResult, updateTournamentStatus, getTournaments, getTournament, getGolfers, reconcilePickPayouts, syncPursesAndRecalculateParticipantTotals } from '@/lib/picks';
+import { updateTournamentResult, updateTournamentStatus, getTournaments, getTournament, getGolfers, reconcilePickPayouts, syncPursesAndRecalculateParticipantTotals, recalculateTournamentResultPayoutsFromPurse, recalculateAllTournamentResultPayoutsFromPurses } from '@/lib/picks';
 import { syncTournamentResults, finalizeTournamentPayouts, finalizeRecentTournaments, populateHistoricalTournament, populateAllCompletedTournaments, getTournamentCoverage, refreshLastCompletedTournaments, refreshAllCompletedTournamentFinishes } from '@/lib/pga-data';
 import { notifyLeagueMembers } from '@/lib/notifications';
 import { recalculateBadges } from '@/lib/badges';
@@ -47,6 +47,7 @@ export async function POST(req: NextRequest) {
         historicalPopulated = hist.populated;
       }
       const reconciled = await reconcilePickPayouts();
+      await recalculateTournamentResultPayoutsFromPurse(body.tournamentId);
       return NextResponse.json({ ...result, historicalPopulated, reconciled });
     }
 
@@ -68,6 +69,7 @@ export async function POST(req: NextRequest) {
       if (!body.tournamentId) return NextResponse.json({ error: 'tournamentId required' }, { status: 400 });
       const result = await populateHistoricalTournament(body.tournamentId);
       await reconcilePickPayouts();
+      await recalculateTournamentResultPayoutsFromPurse(body.tournamentId);
       return NextResponse.json(result);
     }
 
@@ -76,7 +78,8 @@ export async function POST(req: NextRequest) {
     if (body.action === 'populate-all') {
       const result = await populateAllCompletedTournaments();
       await reconcilePickPayouts();
-      return NextResponse.json(result);
+      const tieTableRecalc = await recalculateAllTournamentResultPayoutsFromPurses('2025-2026');
+      return NextResponse.json({ ...result, tieTableRecalc });
     }
 
     /** Force ESPN refresh for every completed event + purse tie table + reconcile + badges. */
@@ -199,11 +202,14 @@ export async function POST(req: NextRequest) {
     const tournamentName = tournament?.name;
 
     let updated = 0;
+    let anyExplicitPrize = false;
     for (const r of results) {
       if (r.golferId && r.position !== undefined) {
         const posStr = String(r.position);
-        const prizeMoney = r.prizeMoney > 0
-          ? r.prizeMoney
+        const rawPrize = Number(r.prizeMoney);
+        if (rawPrize > 0) anyExplicitPrize = true;
+        const prizeMoney = rawPrize > 0
+          ? rawPrize
           : calculatePrizeMoney(purse, parsePosition(posStr), tournamentName);
         await updateTournamentResult(tournamentId, r.golferId, posStr, prizeMoney, r.score);
         updated++;
@@ -212,6 +218,10 @@ export async function POST(req: NextRequest) {
 
     if (status) {
       await updateTournamentStatus(tournamentId, status);
+    }
+
+    if (!anyExplicitPrize && updated > 0) {
+      await recalculateTournamentResultPayoutsFromPurse(tournamentId);
     }
 
     // Notify all leagues that have picks for this tournament

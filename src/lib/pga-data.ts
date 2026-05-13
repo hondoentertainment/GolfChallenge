@@ -3,7 +3,7 @@
 
 import { query, queryOne } from './db';
 import { updateTournamentResult, updateTournamentStatus, getGolfers, getTournament, reconcilePickPayouts, recalculateTournamentResultPayoutsFromPurse, recalculateAllTournamentResultPayoutsFromPurses } from './picks';
-import { calculatePrizeMoney, parsePosition, syncTournamentPursesFromSchedule } from './pga-schedule';
+import { allocatePurseByFinishPositions, parsePosition, syncTournamentPursesFromSchedule } from './pga-schedule';
 import { recalculateBadges } from './badges';
 import { notifyLeagueMembers } from './notifications';
 import { logAction } from './audit';
@@ -172,25 +172,35 @@ export async function syncTournamentResults(tournamentId: string): Promise<{ upd
     await updateTournamentStatus(tournamentId, 'in_progress');
   }
 
+  const matched: { golferId: string; position: string; score: string; name: string }[] = [];
   for (const competitor of competition.competitors) {
     const name = competitor.athlete?.displayName;
     if (!name) continue;
-
     const golferId = golferMap.get(name.toLowerCase());
     if (!golferId) continue;
+    matched.push({
+      golferId,
+      position: competitor.status?.position?.displayName || '',
+      score: competitor.score?.displayValue || '',
+      name,
+    });
+  }
 
-    const position = competitor.status?.position?.displayName || '';
-    const espnEarnings = competitor.earnings || 0;
-    const prizeMoney = espnEarnings > 0
-      ? espnEarnings
-      : calculatePrizeMoney(purse, parsePosition(position), tournamentName);
-    const score = competitor.score?.displayValue || '';
+  // Official PGA-style dollars: `tournaments.purse` × published % with tie splits (not ESPN earnings).
+  const officialPrizes = allocatePurseByFinishPositions(
+    purse,
+    tournamentName,
+    matched.map((m) => ({ id: m.golferId, position: m.position })),
+  );
 
+  for (const m of matched) {
+    const pos = parsePosition(m.position);
+    const prizeMoney = pos > 0 ? (officialPrizes.get(m.golferId) ?? 0) : 0;
     try {
-      await updateTournamentResult(tournamentId, golferId, position, prizeMoney, score);
+      await updateTournamentResult(tournamentId, m.golferId, m.position, prizeMoney, m.score);
       updated++;
     } catch (e) {
-      errors.push(`Failed to update ${name}: ${e instanceof Error ? e.message : 'unknown'}`);
+      errors.push(`Failed to update ${m.name}: ${e instanceof Error ? e.message : 'unknown'}`);
     }
   }
 
@@ -219,6 +229,8 @@ export async function finalizeTournamentPayouts(tournamentId: string): Promise<{
   await updateTournamentStatus(tournamentId, 'completed');
 
   const reconciled = await reconcilePickPayouts();
+
+  await recalculateTournamentResultPayoutsFromPurse(tournamentId);
 
   const tournament = await getTournament(tournamentId);
   const tournamentName = tournament?.name ?? 'Tournament';
@@ -444,10 +456,9 @@ export async function populateHistoricalTournament(
   const golfers = await getGolfers();
   const golferMap = new Map(golfers.map(g => [g.name.toLowerCase(), g.id]));
 
-  // Fix 3: audit-gate the ESPN data before writing. Build a PayoutEntry list
-  // and run auditPayouts in lenient mode (critical invariants enforced; the
-  // tie-math drift that arises from ESPN's published figures is only warned).
-  const payoutEntries: { entry: import('./payout-audit').PayoutEntry; golferId: string }[] = [];
+  // Build leaderboard from ESPN (positions + scores); prize dollars follow in-repo
+  // PGA Tour / Masters payout tables + tie rules, not ESPN's earnings field.
+  const matched: { name: string; golferId: string; position: string; score: string }[] = [];
   let skipped = 0;
 
   for (const competitor of summary.competitors) {
@@ -456,18 +467,27 @@ export async function populateHistoricalTournament(
     const golferId = golferMap.get(name.toLowerCase());
     if (!golferId) { skipped++; continue; }
 
-    const position = competitor.status?.position?.displayName || '';
-    const score = competitor.score?.displayValue || '';
-    const espnEarnings = competitor.earnings || 0;
-    const prizeMoney = espnEarnings > 0
-      ? espnEarnings
-      : calculatePrizeMoney(tournament.purse, parsePosition(position), tournament.name);
-
-    payoutEntries.push({
-      entry: { name, position, score, prizeMoney },
+    matched.push({
+      name,
       golferId,
+      position: competitor.status?.position?.displayName || '',
+      score: competitor.score?.displayValue || '',
     });
   }
+
+  const officialPrizes = allocatePurseByFinishPositions(
+    tournament.purse,
+    tournament.name,
+    matched.map((m) => ({ id: m.golferId, position: m.position })),
+  );
+
+  const payoutEntries: { entry: import('./payout-audit').PayoutEntry; golferId: string }[] = matched.map(
+    (m) => {
+      const pos = parsePosition(m.position);
+      const prizeMoney = pos > 0 ? (officialPrizes.get(m.golferId) ?? 0) : 0;
+      return { entry: { name: m.name, position: m.position, score: m.score, prizeMoney }, golferId: m.golferId };
+    },
+  );
 
   // Run audit on the ESPN batch — drops entries that fail critical checks
   const audit = auditPayouts(

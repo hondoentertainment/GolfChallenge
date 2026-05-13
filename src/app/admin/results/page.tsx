@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
+import type { PickValueAuditReport } from "@/lib/picks";
 
 interface Tournament { id: string; name: string; purse: number; status: string; }
 interface Golfer { id: string; name: string; world_ranking: number; }
@@ -23,6 +24,8 @@ export default function AdminResultsPage() {
   const [fullPayoutUpdate, setFullPayoutUpdate] = useState(false);
   const [refreshingLast5, setRefreshingLast5] = useState(false);
   const [refreshingAllFinishes, setRefreshingAllFinishes] = useState(false);
+  const [auditingPicks, setAuditingPicks] = useState(false);
+  const [auditResult, setAuditResult] = useState<PickValueAuditReport | null>(null);
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
 
@@ -127,9 +130,42 @@ export default function AdminResultsPage() {
       const summary = data.tournaments?.map((t: { name: string; populated: number; errors: number }) =>
         `${t.name}: +${t.populated}${t.errors > 0 ? ` (${t.errors} errors)` : ''}`
       ).join("; ") || `Total: ${data.totalPopulated}`;
-      setMessage(`Populated ${data.totalPopulated} rows across all completed tournaments. ${summary}`);
+      const recalc = data.tieTableRecalc as { tournamentsWithResults?: number; resultRowsUpdated?: number } | undefined;
+      const recalcBit = recalc
+        ? ` Official tie-table pass: ${recalc.resultRowsUpdated ?? 0} payout row(s) across ${recalc.tournamentsWithResults ?? 0} event(s).`
+        : "";
+      setMessage(`Populated ${data.totalPopulated} rows across all completed tournaments.${recalcBit} ${summary}`);
     } catch { setError("Failed to populate all"); }
     finally { setFinalizingAll(false); }
+  }
+
+  async function handleAuditAllPicks() {
+    setAuditingPicks(true);
+    setError("");
+    setMessage("");
+    setAuditResult(null);
+    try {
+      const res = await fetch("/api/admin/picks-audit");
+      const data = (await res.json()) as PickValueAuditReport & { error?: string };
+      if (!res.ok) {
+        setError(data.error ?? "Audit failed");
+        return;
+      }
+      setAuditResult(data);
+      const s = data.summary;
+      setMessage(
+        `${s.ok ? "Picks audit: all checks passed." : "Picks audit: issues found — see details below."} ` +
+          `${s.totalPastNonMissedPicks} past (non-missed) picks · ` +
+          `tie-table vs DB drift: ${s.resultRowsOutOfSyncWithTieTable} result row(s) · ` +
+          `picks missing finish/prize row: ${s.picksMissingResultData} · ` +
+          `picks with $0 but numeric place: ${s.picksZeroPrizeNumericFinish} · ` +
+          `${data.completedTournamentsWithResults} completed tournament(s) had result rows.`,
+      );
+    } catch {
+      setError("Failed to run picks audit");
+    } finally {
+      setAuditingPicks(false);
+    }
   }
 
   async function handleCoverage() {
@@ -266,7 +302,7 @@ export default function AdminResultsPage() {
 
         <div className="bg-surface rounded-xl p-6 border border-border mb-6">
           <h3 className="font-semibold mb-2">Season-Wide Actions</h3>
-          <p className="text-xs text-muted mb-3">Populate every completed tournament from ESPN historical data, then verify coverage. Use <strong>Sync purses &amp; payouts</strong> after updating prize purses in code so all standings match the latest purse (ties split PGA-style). <strong>Re-sync last 5</strong> overwrites stale prize rows for the five most recent finished events (ESPN + tie table). Production checks: <code className="text-xs bg-surface px-1 rounded">GET /api/health</code></p>
+          <p className="text-xs text-muted mb-3">ESPN supplies positions/scores; dollar amounts follow the in-app <strong>official PGA Tour / Masters payout tables</strong> and tie rules (not ESPN earnings). Populate pulls historical leaderboards; <strong>Populate All</strong> then reapplies the tie table across the season. Use <strong>Sync purses &amp; payouts</strong> when purses change in code. <strong>Audit all pick values</strong> checks DB vs the table. CLI: <code className="text-xs bg-surface px-1 rounded">npm run apply-official-payouts</code>. Production: <code className="text-xs bg-surface px-1 rounded">GET /api/health</code></p>
           <div className="flex flex-wrap gap-2">
             <button onClick={handlePopulateAll} className="bg-accent hover:bg-accent-light text-primary-dark font-semibold px-4 py-2 rounded-lg text-sm">Populate All Completed</button>
             <button onClick={handleRefreshPursePayouts} disabled={refreshingPurses} className="bg-primary hover:bg-primary-light text-white font-semibold px-4 py-2 rounded-lg text-sm disabled:opacity-50">{refreshingPurses ? "Syncing…" : "Sync purses & payouts"}</button>
@@ -283,6 +319,14 @@ export default function AdminResultsPage() {
               {fullPayoutUpdate ? "Updating…" : "Update all payouts & stats"}
             </button>
             <button onClick={handleCoverage} className="bg-surface-alt border border-border hover:border-primary font-medium px-4 py-2 rounded-lg text-sm">Coverage Report</button>
+            <button
+              type="button"
+              onClick={handleAuditAllPicks}
+              disabled={auditingPicks || refreshingPurses || fullPayoutUpdate || refreshingLast5 || refreshingAllFinishes}
+              className="bg-teal-700 hover:bg-teal-600 text-white font-semibold px-4 py-2 rounded-lg text-sm disabled:opacity-50"
+            >
+              {auditingPicks ? "Auditing picks…" : "Audit all pick values"}
+            </button>
           </div>
         </div>
 
@@ -290,6 +334,20 @@ export default function AdminResultsPage() {
           <div className="mb-6 space-y-2">
             {message && <p className="text-success font-medium text-sm break-words">{message}</p>}
             {error && <p className="text-danger font-medium text-sm">{error}</p>}
+          </div>
+        )}
+
+        {auditResult && (
+          <div className="mb-6 bg-surface rounded-xl p-4 border border-border">
+            <p className="text-xs font-medium text-muted mb-2">
+              Full audit (season {auditResult.season}) — compares stored prizes to the in-app tie-split table, and lists picks on finished events that lack results or show $0 with a paying position.
+            </p>
+            <details className="text-sm">
+              <summary className="cursor-pointer font-medium text-primary select-none">Raw JSON</summary>
+              <pre className="mt-3 text-xs p-3 bg-surface-alt rounded-lg overflow-auto max-h-[min(28rem,50vh)] whitespace-pre-wrap break-words border border-border">
+                {JSON.stringify(auditResult, null, 2)}
+              </pre>
+            </details>
           </div>
         )}
 

@@ -19,6 +19,7 @@ import {
   getTournaments,
   getLeagueStandings,
   getLeaguePicks,
+  recalculateTournamentResultPayoutsFromPurse,
 } from './picks';
 import { syncTournamentPursesFromSchedule } from './pga-schedule';
 import { sendPickReminderEmail, sendWeeklyRecapEmail } from './email';
@@ -54,6 +55,7 @@ async function tournamentSyncJob(): Promise<JobResult> {
 
   const result = await syncTournamentResults(tournament.id);
   const reconciled = await reconcilePickPayouts();
+  await recalculateTournamentResultPayoutsFromPurse(tournament.id);
   return {
     ok: true,
     summary: `${tournament.name}: synced ${result.updated} results (${result.espnHadEvent ? 'ESPN live' : 'ESPN empty'}), reconciled ${reconciled.created + reconciled.updated} picks`,
@@ -67,6 +69,7 @@ async function syncResultsJob(): Promise<JobResult> {
 
   const result = await syncTournamentResults(tournament.id);
   const reconciled = await reconcilePickPayouts();
+  await recalculateTournamentResultPayoutsFromPurse(tournament.id);
   return {
     ok: true,
     summary: `${tournament.name}: ${result.updated} synced, ${reconciled.created + reconciled.updated} reconciled`,

@@ -120,11 +120,9 @@ export function auditPayouts(entries: PayoutEntry[], ctx: AuditContext): AuditRe
       }
     }
 
-    // Compare against table-calculated amount as a sanity check. Augusta's
-    // published per-player figures occasionally drift from the formula because
-    // the published payout schedule may have rounding/structural quirks. Treat
-    // any drift as advisory-only — we trust the source data over the formula
-    // when all tied players have the same positive amount.
+    // Compare against table-calculated amount as a sanity check. When prizeMoney
+    // is sourced from `allocatePurseByFinishPositions`, this should match; any
+    // drift flags inconsistent position labels or purse/table skew.
     const drift = Math.abs(actualEach - expectedEach);
     if (drift > 500) {
       warnings.push(`Tied group ${pos}: $${actualEach.toLocaleString()} per player vs. table-calculated $${expectedEach.toLocaleString()} (drift $${drift.toLocaleString()})`);

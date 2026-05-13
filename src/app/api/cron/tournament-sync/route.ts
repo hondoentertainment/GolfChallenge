@@ -1,7 +1,7 @@
 import { verifyCronAuth } from '@/lib/cron-auth';
 import { NextRequest, NextResponse } from 'next/server';
 import { syncTournamentResults } from '@/lib/pga-data';
-import { getCurrentTournament, reconcilePickPayouts } from '@/lib/picks';
+import { getCurrentTournament, reconcilePickPayouts, recalculateTournamentResultPayoutsFromPurse } from '@/lib/picks';
 import { recalculateBadges } from '@/lib/badges';
 import { notifyLeagueMembers } from '@/lib/notifications';
 import { logAction } from '@/lib/audit';
@@ -38,6 +38,7 @@ export async function GET(req: NextRequest) {
     }
 
     const reconciled = await reconcilePickPayouts();
+    await recalculateTournamentResultPayoutsFromPurse(tournament.id);
 
     return NextResponse.json({ tournament: tournament.name, ...result, reconciled });
   } catch (e) {
