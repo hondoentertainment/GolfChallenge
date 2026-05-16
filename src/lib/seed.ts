@@ -3,8 +3,6 @@ import { seedTournaments, seedGolfers } from './pga-schedule';
 import { seedMastersResults } from './masters-results';
 import { seedRBCHeritageResults } from './rbc-heritage-results';
 import { seedCadillacChampionshipResults, seedTruistChampionshipResults } from './recent-tournament-results';
-import { populateAllCompletedTournaments } from './pga-data';
-
 // Fix 6: use a single in-flight promise as the concurrency guard. The first
 // caller initializes it and all subsequent callers (even those racing on a
 // cold-start boot) await the same promise. Only the initializer can reset
@@ -37,19 +35,7 @@ async function doSeed() {
   await seedCadillacChampionshipResults();
   await seedTruistChampionshipResults();
 
-  // After the audit-approved tournament seeds, populate every completed tournament
-  // from ESPN's historical summary. audit-approved rows are never overwritten;
-  // ESPN only fills gaps. This is the "ensure every golfer is listed for every
-  // event" sweep that runs on every cold start.
-  try {
-    const result = await populateAllCompletedTournaments();
-    const nonEmpty = result.tournaments.filter(t => t.populated > 0);
-    if (nonEmpty.length > 0) {
-      for (const t of nonEmpty) {
-        console.log(`[seed] ${t.name}: +${t.populated} players from ESPN historical`);
-      }
-    }
-  } catch (e) {
-    console.warn('[seed] Could not run historical population sweep:', e);
-  }
+  // Historical ESPN backfill for completed events is handled by crons and admin jobs
+  // (`populate-all`, `refresh-last-completed`, etc.). Running it here blocked every
+  // cold-start request on `/api/auth/me`, `/api/public/recap`, and similar for 30s+.
 }
