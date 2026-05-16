@@ -8,6 +8,7 @@ import { logAction } from '@/lib/audit';
 import { query, queryOne } from '@/lib/db';
 import { ensureSeeded } from '@/lib/seed';
 import { calculatePrizeMoney, parsePosition } from '@/lib/pga-schedule';
+import { CHALLENGE_SEASON, CHALLENGE_TOURNAMENTS_START_ON_OR_AFTER } from '@/lib/challenge-season';
 
 // GET: list tournaments and golfers for admin form
 export async function GET() {
@@ -78,7 +79,7 @@ export async function POST(req: NextRequest) {
     if (body.action === 'populate-all') {
       const result = await populateAllCompletedTournaments();
       await reconcilePickPayouts();
-      const tieTableRecalc = await recalculateAllTournamentResultPayoutsFromPurses('2025-2026');
+      const tieTableRecalc = await recalculateAllTournamentResultPayoutsFromPurses();
       return NextResponse.json({ ...result, tieTableRecalc });
     }
 
@@ -118,11 +119,12 @@ export async function POST(req: NextRequest) {
     }
 
     if (body.action === 'refresh-purse-payouts') {
-      const result = await syncPursesAndRecalculateParticipantTotals('2025-2026');
+      const result = await syncPursesAndRecalculateParticipantTotals();
       const leagues = await query<{ league_id: string }>(
         `SELECT DISTINCT p.league_id FROM picks p
          JOIN tournaments t ON t.id = p.tournament_id
-         WHERE t.season = '2025-2026'`,
+         WHERE t.season = $1 AND (t.start_date::date) >= $2::date`,
+        [CHALLENGE_SEASON, CHALLENGE_TOURNAMENTS_START_ON_OR_AFTER],
       );
       for (const l of leagues) {
         await recalculateBadges(l.league_id);
@@ -141,13 +143,14 @@ export async function POST(req: NextRequest) {
       const finalized = await finalizeRecentTournaments();
       const populateAll = await populateAllCompletedTournaments();
       const reconcileAfterPopulate = await reconcilePickPayouts();
-      const purseSync = await syncPursesAndRecalculateParticipantTotals('2025-2026');
+      const purseSync = await syncPursesAndRecalculateParticipantTotals();
       const coverage = await getTournamentCoverage();
       const seasonTotalRow = await queryOne<{ total: string }>(
         `SELECT COALESCE(SUM(tr.prize_money), 0)::text as total
          FROM tournament_results tr
          JOIN tournaments t ON t.id = tr.tournament_id
-         WHERE t.season = '2025-2026'`,
+         WHERE t.season = $1 AND (t.start_date::date) >= $2::date`,
+        [CHALLENGE_SEASON, CHALLENGE_TOURNAMENTS_START_ON_OR_AFTER],
       );
       const totalResultRows = coverage.tournaments.reduce((s, t) => s + t.resultRows, 0);
       const totalPicksMissingResults = coverage.tournaments.reduce((s, t) => s + t.pickedWithoutResult, 0);
@@ -156,7 +159,8 @@ export async function POST(req: NextRequest) {
       const leagues = await query<{ league_id: string }>(
         `SELECT DISTINCT p.league_id FROM picks p
          JOIN tournaments t ON t.id = p.tournament_id
-         WHERE t.season = '2025-2026'`,
+         WHERE t.season = $1 AND (t.start_date::date) >= $2::date`,
+        [CHALLENGE_SEASON, CHALLENGE_TOURNAMENTS_START_ON_OR_AFTER],
       );
       for (const l of leagues) {
         await recalculateBadges(l.league_id);

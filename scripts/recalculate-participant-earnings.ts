@@ -2,6 +2,10 @@
  * Sync purses from `pga-schedule`, recompute every finisher's `tournament_results.prize_money`
  * from current purses/positions, reconcile picks, then refresh badges — updates dollars shown in standings.
  *
+ * For a full refresh (force ESPN historical on every completed event + tie-table payouts + reconcile + badges), use:
+ *   npm run update-all-values
+ *   (same as `refresh-all-finishes` / admin job "Refresh all completed finishes".)
+ *
  * Usage (from repo root):
  *   node --env-file=.env.local ./node_modules/tsx/dist/cli.mjs scripts/recalculate-participant-earnings.ts
  *

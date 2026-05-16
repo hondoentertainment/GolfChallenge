@@ -4,12 +4,12 @@ import { v4 as uuidv4 } from 'uuid';
 // 2025-2026 PGA Tour Challenge: Masters through U.S. Open
 // Excludes: Zurich Classic (team event)
 export const PGA_SCHEDULE_2025_2026 = [
-  { name: "Masters Tournament", startDate: "2026-04-09", endDate: "2026-04-13", course: "Augusta National Golf Club", location: "Augusta, GA", purse: 22500000 },
+  { name: "Masters Tournament", startDate: "2026-04-09", endDate: "2026-04-12", course: "Augusta National Golf Club", location: "Augusta, GA", purse: 22500000 },
   { name: "RBC Heritage", startDate: "2026-04-16", endDate: "2026-04-19", course: "Harbour Town Golf Links", location: "Hilton Head, SC", purse: 20000000 },
   // Zurich Classic EXCLUDED (team event) - Apr 23-26
   { name: "Cadillac Championship", startDate: "2026-04-30", endDate: "2026-05-03", course: "Trump National Doral", location: "Miami, FL", purse: 20000000 },
   { name: "Truist Championship", startDate: "2026-05-07", endDate: "2026-05-10", course: "Quail Hollow Club", location: "Charlotte, NC", purse: 20000000 },
-  { name: "PGA Championship", startDate: "2026-05-15", endDate: "2026-05-18", course: "Aronimink Golf Club", location: "Newtown Square, PA", purse: 19000000 },
+  { name: "PGA Championship", startDate: "2026-05-14", endDate: "2026-05-17", course: "Aronimink Golf Club", location: "Newtown Square, PA", purse: 19000000 },
   { name: "CJ Cup Byron Nelson", startDate: "2026-05-21", endDate: "2026-05-24", course: "TPC Craig Ranch", location: "McKinney, TX", purse: 10300000 },
   { name: "Charles Schwab Challenge", startDate: "2026-05-28", endDate: "2026-05-31", course: "Colonial Country Club", location: "Fort Worth, TX", purse: 9500000 },
   { name: "The Memorial Tournament", startDate: "2026-06-04", endDate: "2026-06-07", course: "Muirfield Village Golf Club", location: "Dublin, OH", purse: 20000000 },

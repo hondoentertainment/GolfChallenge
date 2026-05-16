@@ -2,6 +2,7 @@
 // Uses ESPN's public API for leaderboard data
 
 import { query, queryOne } from './db';
+import { CHALLENGE_SEASON, CHALLENGE_TOURNAMENTS_START_ON_OR_AFTER } from './challenge-season';
 import { updateTournamentResult, updateTournamentStatus, getGolfers, getTournament, reconcilePickPayouts, recalculateTournamentResultPayoutsFromPurse, recalculateAllTournamentResultPayoutsFromPurses } from './picks';
 import { allocatePurseByFinishPositions, parsePosition, syncTournamentPursesFromSchedule } from './pga-schedule';
 import { recalculateBadges } from './badges';
@@ -34,13 +35,20 @@ const ESPN_PGA_URL = 'https://site.api.espn.com/apis/site/v2/sports/golf/pga/sco
 const ESPN_EVENT_SUMMARY_URL = 'https://site.api.espn.com/apis/site/v2/sports/golf/pga/summary';
 const ESPN_SCHEDULE_URL = 'https://site.api.espn.com/apis/site/v2/sports/golf/pga/scoreboard';
 
-// Known ESPN event IDs for the 2025-2026 tournaments (used to fetch historical
-// data after the event has been replaced on the live scoreboard). IDs for
-// tournaments not listed here are discovered dynamically via discoverESPNEventId().
+// Known ESPN event IDs for the challenge season (2026 calendar schedule; wraparound DB label 2025-2026).
+// Sourced from `scoreboard?dates=YYYYMMDD` on each event's Thursday; keeps historical summary
+// working after the event leaves the live board. Unlisted names still use discoverESPNEventId().
 export const ESPN_EVENT_IDS: Record<string, string> = {
   'Masters Tournament': '401811941',
   'RBC Heritage': '401811942',
+  'Cadillac Championship': '401811944',
   'Truist Championship': '401811945',
+  'PGA Championship': '401811947',
+  'CJ Cup Byron Nelson': '401811948',
+  'Charles Schwab Challenge': '401811949',
+  'The Memorial Tournament': '401811950',
+  'RBC Canadian Open': '401811951',
+  'U.S. Open': '401811952',
 };
 
 // In-memory cache for dynamically discovered event IDs. Keyed by tournament name.
@@ -266,11 +274,13 @@ export async function finalizeRecentTournaments(): Promise<{
 }> {
   const pending = await query<{ id: string; name: string }>(
     `SELECT id, name FROM tournaments
-     WHERE season = '2025-2026'
+     WHERE season = $1
+       AND (start_date::date) >= $2::date
        AND (end_date::date) < CURRENT_DATE
        AND (end_date::date) > CURRENT_DATE - INTERVAL '14 days'
        AND (status IS NULL OR status <> 'completed')
-     ORDER BY end_date ASC`
+     ORDER BY end_date ASC`,
+    [CHALLENGE_SEASON, CHALLENGE_TOURNAMENTS_START_ON_OR_AFTER],
   );
 
   const finalized = [];
@@ -298,9 +308,11 @@ export async function populateAllCompletedTournaments(options?: { force?: boolea
 }> {
   const completed = await query<{ id: string; name: string }>(
     `SELECT id, name FROM tournaments
-     WHERE season = '2025-2026'
+     WHERE season = $1
+       AND (start_date::date) >= $2::date
        AND (end_date::date) < CURRENT_DATE
-     ORDER BY end_date ASC`
+     ORDER BY end_date ASC`,
+    [CHALLENGE_SEASON, CHALLENGE_TOURNAMENTS_START_ON_OR_AFTER],
   );
 
   const force = options?.force === true;
@@ -345,15 +357,16 @@ export async function refreshAllCompletedTournamentFinishes(): Promise<{
   reconciled: Awaited<ReturnType<typeof reconcilePickPayouts>>;
   badgesRefreshed: number;
 }> {
-  const pursesSynced = await syncTournamentPursesFromSchedule('2025-2026');
+  const pursesSynced = await syncTournamentPursesFromSchedule(CHALLENGE_SEASON);
   const populateAll = await populateAllCompletedTournaments({ force: true });
-  const { tournamentsWithResults, resultRowsUpdated } = await recalculateAllTournamentResultPayoutsFromPurses('2025-2026');
+  const { tournamentsWithResults, resultRowsUpdated } = await recalculateAllTournamentResultPayoutsFromPurses();
   const reconciled = await reconcilePickPayouts();
 
   const leagues = await query<{ league_id: string }>(
     `SELECT DISTINCT p.league_id FROM picks p
      JOIN tournaments t ON t.id = p.tournament_id
-     WHERE t.season = '2025-2026'`,
+     WHERE t.season = $1 AND (t.start_date::date) >= $2::date`,
+    [CHALLENGE_SEASON, CHALLENGE_TOURNAMENTS_START_ON_OR_AFTER],
   );
   for (const l of leagues) {
     await recalculateBadges(l.league_id);
@@ -404,9 +417,9 @@ export async function getTournamentCoverage(): Promise<{
        LEFT JOIN tournament_results tr ON tr.tournament_id = p.tournament_id AND tr.golfer_id = p.golfer_id
        WHERE p.tournament_id = t.id AND tr.id IS NULL AND p.is_missed = FALSE) as picked_without_result
     FROM tournaments t
-    WHERE t.season = '2025-2026'
+    WHERE t.season = $1 AND (t.start_date::date) >= $2::date
     ORDER BY t.start_date ASC
-  `);
+  `, [CHALLENGE_SEASON, CHALLENGE_TOURNAMENTS_START_ON_OR_AFTER]);
 
   return {
     tournaments: rows.map(r => ({
@@ -557,14 +570,16 @@ export async function refreshLastCompletedTournaments(count = 5): Promise<{
   reconciled: Awaited<ReturnType<typeof reconcilePickPayouts>>;
   badgesRefreshed: number;
 }> {
-  const pursesSynced = await syncTournamentPursesFromSchedule('2025-2026');
+  const pursesSynced = await syncTournamentPursesFromSchedule(CHALLENGE_SEASON);
 
   const list = await query<{ id: string; name: string }>(
     `SELECT id, name FROM tournaments
-     WHERE season = '2025-2026' AND (end_date::date) < CURRENT_DATE
+     WHERE season = $1
+       AND (start_date::date) >= $2::date
+       AND (end_date::date) < CURRENT_DATE
      ORDER BY end_date DESC
-     LIMIT $1`,
-    [count],
+     LIMIT $3`,
+    [CHALLENGE_SEASON, CHALLENGE_TOURNAMENTS_START_ON_OR_AFTER, count],
   );
 
   const tournaments: {
@@ -590,7 +605,8 @@ export async function refreshLastCompletedTournaments(count = 5): Promise<{
   const leagues = await query<{ league_id: string }>(
     `SELECT DISTINCT p.league_id FROM picks p
      JOIN tournaments t ON t.id = p.tournament_id
-     WHERE t.season = '2025-2026'`,
+     WHERE t.season = $1 AND (t.start_date::date) >= $2::date`,
+    [CHALLENGE_SEASON, CHALLENGE_TOURNAMENTS_START_ON_OR_AFTER],
   );
   for (const l of leagues) {
     await recalculateBadges(l.league_id);
@@ -606,9 +622,10 @@ export async function matchCurrentTournament(eventName: string): Promise<string 
   const row = await queryOne<{ id: string }>(
     `SELECT id FROM tournaments
      WHERE LOWER(REPLACE(name, 'the ', '')) LIKE $1
-     AND season = '2025-2026'
+     AND season = $2
+     AND (start_date::date) >= $3::date
      LIMIT 1`,
-    [`%${normalized.slice(0, 20)}%`]
+    [`%${normalized.slice(0, 20)}%`, CHALLENGE_SEASON, CHALLENGE_TOURNAMENTS_START_ON_OR_AFTER],
   );
   return row?.id || null;
 }

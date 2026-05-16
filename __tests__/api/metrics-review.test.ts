@@ -76,7 +76,7 @@ describe('GET /api/admin/metrics-review', () => {
         id: 't1',
         name: 'Masters Tournament',
         start_date: '2026-04-09',
-        end_date: '2026-04-13',
+        end_date: '2026-04-12',
         course: '',
         location: '',
         purse: 21_000_000,
