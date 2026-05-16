@@ -1,16 +1,17 @@
+import { verifyCronAuth } from '@/lib/cron-auth';
 import { NextRequest, NextResponse } from 'next/server';
 import { syncTournamentResults } from '@/lib/pga-data';
-import { getCurrentTournament, getTournaments, reconcilePickPayouts } from '@/lib/picks';
+import { getCurrentTournament, reconcilePickPayouts, recalculateTournamentResultPayoutsFromPurse } from '@/lib/picks';
 import { recalculateBadges } from '@/lib/badges';
 import { notifyLeagueMembers } from '@/lib/notifications';
 import { logAction } from '@/lib/audit';
 import { query } from '@/lib/db';
 import { ensureSeeded } from '@/lib/seed';
 
+/** Polls ESPN for the in-season event; Sun hourly + Thu–Sat every 2h (see vercel.json). */
 export async function GET(req: NextRequest) {
-  if (process.env.CRON_SECRET && req.headers.get('authorization') !== `Bearer ${process.env.CRON_SECRET}`) {
-    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-  }
+  const authError = verifyCronAuth(req);
+  if (authError) return authError;
   await ensureSeeded();
   try {
     const tournament = await getCurrentTournament();
@@ -37,6 +38,7 @@ export async function GET(req: NextRequest) {
     }
 
     const reconciled = await reconcilePickPayouts();
+    await recalculateTournamentResultPayoutsFromPurse(tournament.id);
 
     return NextResponse.json({ tournament: tournament.name, ...result, reconciled });
   } catch (e) {

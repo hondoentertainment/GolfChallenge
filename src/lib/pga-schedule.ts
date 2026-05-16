@@ -4,12 +4,12 @@ import { v4 as uuidv4 } from 'uuid';
 // 2025-2026 PGA Tour Challenge: Masters through U.S. Open
 // Excludes: Zurich Classic (team event)
 export const PGA_SCHEDULE_2025_2026 = [
-  { name: "Masters Tournament", startDate: "2026-04-09", endDate: "2026-04-13", course: "Augusta National Golf Club", location: "Augusta, GA", purse: 22500000 },
+  { name: "Masters Tournament", startDate: "2026-04-09", endDate: "2026-04-12", course: "Augusta National Golf Club", location: "Augusta, GA", purse: 22500000 },
   { name: "RBC Heritage", startDate: "2026-04-16", endDate: "2026-04-19", course: "Harbour Town Golf Links", location: "Hilton Head, SC", purse: 20000000 },
   // Zurich Classic EXCLUDED (team event) - Apr 23-26
   { name: "Cadillac Championship", startDate: "2026-04-30", endDate: "2026-05-03", course: "Trump National Doral", location: "Miami, FL", purse: 20000000 },
   { name: "Truist Championship", startDate: "2026-05-07", endDate: "2026-05-10", course: "Quail Hollow Club", location: "Charlotte, NC", purse: 20000000 },
-  { name: "PGA Championship", startDate: "2026-05-15", endDate: "2026-05-18", course: "Aronimink Golf Club", location: "Newtown Square, PA", purse: 19000000 },
+  { name: "PGA Championship", startDate: "2026-05-14", endDate: "2026-05-17", course: "Aronimink Golf Club", location: "Newtown Square, PA", purse: 19000000 },
   { name: "CJ Cup Byron Nelson", startDate: "2026-05-21", endDate: "2026-05-24", course: "TPC Craig Ranch", location: "McKinney, TX", purse: 10300000 },
   { name: "Charles Schwab Challenge", startDate: "2026-05-28", endDate: "2026-05-31", course: "Colonial Country Club", location: "Fort Worth, TX", purse: 9500000 },
   { name: "The Memorial Tournament", startDate: "2026-06-04", endDate: "2026-06-07", course: "Muirfield Village Golf Club", location: "Dublin, OH", purse: 20000000 },
@@ -185,6 +185,71 @@ export function getTournamentPayouts(purse: number, tournamentName?: string): { 
     }
   }
   return payouts;
+}
+
+/**
+ * Split purse money for finishers with parsePosition > 0 using PGA-style tie rules:
+ * players tied for Nth share the combined payout for places N..N+k-1 (equal split).
+ * Rows with MC/CUT/etc. are omitted (leave their prize_money unchanged in DB).
+ */
+export function allocatePurseByFinishPositions(
+  purse: number,
+  tournamentName: string | undefined,
+  rows: { id: string; position: string }[],
+): Map<string, number> {
+  const out = new Map<string, number>();
+  const ranked = rows
+    .map((r) => ({ ...r, pos: parsePosition(r.position) }))
+    .filter((r) => r.pos > 0)
+    .sort((a, b) => (a.pos !== b.pos ? a.pos - b.pos : a.id.localeCompare(b.id)));
+
+  let i = 0;
+  while (i < ranked.length) {
+    const p = ranked[i]!.pos;
+    let j = i + 1;
+    while (j < ranked.length && ranked[j]!.pos === p) j++;
+    const k = j - i;
+    let sum = 0;
+    for (let off = 0; off < k; off++) {
+      sum += calculatePrizeMoney(purse, p + off, tournamentName);
+    }
+    const each = Math.round(sum / k);
+    for (let t = i; t < j; t++) {
+      out.set(ranked[t]!.id, each);
+    }
+    i = j;
+  }
+  return out;
+}
+
+/**
+ * Sync schedule fields from `PGA_SCHEDULE_2025_2026` into `tournaments` (dates, course,
+ * location, purse) so the DB matches the in-repo calendar after code changes. Returns rows updated.
+ */
+export async function syncTournamentPursesFromSchedule(season = '2025-2026'): Promise<number> {
+  let updated = 0;
+  for (const t of PGA_SCHEDULE_2025_2026) {
+    const rows = await query<{ id: string }>(
+      `UPDATE tournaments
+       SET purse = $1,
+           start_date = $4,
+           end_date = $5,
+           course = $6,
+           location = $7
+       WHERE name = $2 AND season = $3
+         AND (
+           purse IS DISTINCT FROM $1 OR
+           start_date IS DISTINCT FROM $4 OR
+           end_date IS DISTINCT FROM $5 OR
+           course IS DISTINCT FROM $6 OR
+           location IS DISTINCT FROM $7
+         )
+       RETURNING id`,
+      [t.purse, t.name, season, t.startDate, t.endDate, t.course, t.location],
+    );
+    updated += rows.length;
+  }
+  return updated;
 }
 
 // Full PGA Tour player roster
@@ -428,14 +493,7 @@ export async function seedTournaments() {
     }
   }
 
-  // Sync purses for existing tournaments so official purse updates propagate
-  // (e.g. Masters 2026 increased to a record $22.5M)
-  for (const t of PGA_SCHEDULE_2025_2026) {
-    await execute(
-      `UPDATE tournaments SET purse = $1 WHERE name = $2 AND season = $3 AND purse <> $1`,
-      [t.purse, t.name, '2025-2026']
-    );
-  }
+  await syncTournamentPursesFromSchedule('2025-2026');
 }
 
 export async function seedGolfers() {

@@ -4,21 +4,78 @@ import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 
+type RecapPayload = {
+  recap: {
+    tournament: { name: string; course: string; purse: number };
+    results: { golfer_name: string; position: string; prize_money: number }[];
+  } | null;
+  upcoming: { name: string; start_date: string; course: string } | null;
+  noRecapReason?: 'no_completed_events_with_results' | 'tournament_not_found' | 'empty_leaderboard' | null;
+};
+
 function RecapSection() {
-  const [recap, setRecap] = useState<{
-    recap: { tournament: { name: string; course: string; purse: number }; results: { golfer_name: string; position: string; prize_money: number }[] } | null;
-    upcoming: { name: string; start_date: string; course: string } | null;
-  } | null>(null);
+  const [payload, setPayload] = useState<RecapPayload | null>(null);
+  const [loadState, setLoadState] = useState<'loading' | 'ok' | 'error'>('loading');
 
   useEffect(() => {
-    fetch("/api/public/recap")
-      .then(r => r.ok ? r.json() : null)
-      .then(setRecap)
-      .catch(() => {});
+    fetch('/api/public/recap')
+      .then((r) => {
+        if (!r.ok) throw new Error('bad response');
+        return r.json();
+      })
+      .then((data: RecapPayload) => {
+        setPayload(data);
+        setLoadState('ok');
+      })
+      .catch(() => setLoadState('error'));
   }, []);
 
-  if (!recap?.recap) return null;
-  const { tournament, results } = recap.recap;
+  if (loadState === 'loading') {
+    return (
+      <section className="max-w-6xl mx-auto px-6 py-16" aria-busy="true">
+        <h2 className="text-3xl font-bold text-center mb-8">Recent Results</h2>
+        <div className="bg-surface rounded-xl p-10 border border-border text-center text-muted text-sm">
+          Loading tournament highlights…
+        </div>
+      </section>
+    );
+  }
+
+  if (loadState === 'error' || !payload) {
+    return (
+      <section className="max-w-6xl mx-auto px-6 py-16">
+        <h2 className="text-3xl font-bold text-center mb-8">Recent Results</h2>
+        <div className="bg-surface rounded-xl p-8 border border-border text-center text-muted text-sm">
+          Highlights are temporarily unavailable. Try again in a moment.
+        </div>
+      </section>
+    );
+  }
+
+  const { recap, upcoming, noRecapReason } = payload;
+
+  if (!recap) {
+    return (
+      <section className="max-w-6xl mx-auto px-6 py-16">
+        <h2 className="text-3xl font-bold text-center mb-8">Recent Results</h2>
+        <div className="bg-surface rounded-xl p-8 border border-border text-center space-y-4">
+          <p className="text-muted text-sm max-w-lg mx-auto">
+            {noRecapReason === 'no_completed_events_with_results'
+              ? 'No finished tournaments with results yet. Check back after the first event wraps up.'
+              : 'No recap is available right now.'}
+          </p>
+          {upcoming && (
+            <p className="text-sm text-muted">
+              Up next:{' '}
+              <strong className="text-foreground">{upcoming.name}</strong> at {upcoming.course}
+            </p>
+          )}
+        </div>
+      </section>
+    );
+  }
+
+  const { tournament, results } = recap;
 
   return (
     <section className="max-w-6xl mx-auto px-6 py-16">
@@ -26,22 +83,35 @@ function RecapSection() {
       <div className="bg-surface rounded-xl p-8 border border-border">
         <h3 className="text-xl font-bold mb-1">{tournament.name}</h3>
         <p className="text-muted text-sm mb-4">{tournament.course}</p>
-        <div className="space-y-2">
-          {results.slice(0, 5).map((r, i) => (
-            <div key={i} className="flex items-center justify-between px-4 py-2 rounded-lg bg-surface-alt">
-              <div className="flex items-center gap-3">
-                <span className={`font-bold ${i === 0 ? "text-accent text-lg" : "text-muted"}`}>{r.position}</span>
-                <span className="font-medium">{r.golfer_name}</span>
+        {results.length === 0 ? (
+          <p className="text-sm text-muted text-center py-6">
+            Leaderboard data is not available for this event yet. Results may still be syncing.
+          </p>
+        ) : (
+          <div className="space-y-2">
+            {results.slice(0, 5).map((r, i) => (
+              <div
+                key={`${r.golfer_name}-${i}`}
+                className="flex items-center justify-between px-4 py-2 rounded-lg bg-surface-alt"
+              >
+                <div className="flex items-center gap-3">
+                  <span className={`font-bold ${i === 0 ? 'text-accent text-lg' : 'text-muted'}`}>
+                    {r.position}
+                  </span>
+                  <span className="font-medium">{r.golfer_name}</span>
+                </div>
+                <span className={`font-bold ${i === 0 ? 'text-accent' : ''}`}>
+                  {r.prize_money > 0 ? '$' + r.prize_money.toLocaleString() : ''}
+                </span>
               </div>
-              <span className={`font-bold ${i === 0 ? "text-accent" : ""}`}>
-                {r.prize_money > 0 ? "$" + r.prize_money.toLocaleString() : ""}
-              </span>
-            </div>
-          ))}
-        </div>
-        {recap.upcoming && (
+            ))}
+          </div>
+        )}
+        {upcoming && (
           <div className="mt-6 pt-4 border-t border-border text-center">
-            <p className="text-sm text-muted">Up next: <strong className="text-foreground">{recap.upcoming.name}</strong> at {recap.upcoming.course}</p>
+            <p className="text-sm text-muted">
+              Up next: <strong className="text-foreground">{upcoming.name}</strong> at {upcoming.course}
+            </p>
           </div>
         )}
       </div>

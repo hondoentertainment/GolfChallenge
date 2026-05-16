@@ -2,6 +2,9 @@
   "name": "golf-challenge",
   "version": "0.1.0",
   "private": true,
+  "engines": {
+    "node": ">=20"
+  },
   "scripts": {
     "dev": "next dev",
     "build": "next build",
@@ -9,34 +12,41 @@
     "lint": "eslint",
     "test": "jest",
     "finalize:recent": "tsx --env-file-if-exists=.env --env-file-if-exists=.env.local scripts/finalize-recent.ts"
+    "recalc-earnings": "node --env-file=.env.local ./node_modules/tsx/dist/cli.mjs scripts/recalculate-participant-earnings.ts",
+    "audit-payouts": "node --env-file=.env.local ./node_modules/tsx/dist/cli.mjs scripts/audit-pick-payouts.ts",
+    "refresh-last-completed": "node --env-file=.env.local ./node_modules/tsx/dist/cli.mjs scripts/refresh-last-completed.ts",
+    "refresh-all-finishes": "node --env-file=.env.local ./node_modules/tsx/dist/cli.mjs scripts/refresh-all-completed-finishes.ts",
+    "update-all-values": "node --env-file=.env.local ./node_modules/tsx/dist/cli.mjs scripts/refresh-all-completed-finishes.ts",
+    "apply-official-payouts": "node --env-file=.env.local ./node_modules/tsx/dist/cli.mjs scripts/apply-official-payouts.ts"
   },
   "dependencies": {
-    "@neondatabase/serverless": "^1.0.2",
+    "@neondatabase/serverless": "^1.1.0",
     "bcryptjs": "^3.0.3",
-    "jose": "^6.2.2",
-    "next": "16.2.2",
-    "react": "19.2.4",
-    "react-dom": "19.2.4",
-    "resend": "^6.10.0",
-    "uuid": "^13.0.0"
+    "jose": "^6.2.3",
+    "next": "^16.2.6",
+    "react": "^19.2.6",
+    "react-dom": "^19.2.6",
+    "resend": "^6.12.3",
+    "uuid": "^13.0.2"
   },
   "devDependencies": {
-    "@tailwindcss/postcss": "^4",
+    "@tailwindcss/postcss": "^4.3.0",
     "@testing-library/jest-dom": "^6.9.1",
     "@testing-library/react": "^16.3.2",
     "@types/bcryptjs": "^2.4.6",
     "@types/jest": "^30.0.0",
-    "@types/node": "^20",
+    "@types/node": "^20.19.41",
     "@types/react": "^19",
     "@types/react-dom": "^19",
     "@types/uuid": "^10.0.0",
     "eslint": "^9",
-    "eslint-config-next": "16.2.2",
-    "jest": "^30.3.0",
-    "jest-environment-jsdom": "^30.3.0",
-    "tailwindcss": "^4",
+    "eslint-config-next": "^16.2.6",
+    "jest": "^30.4.2",
+    "jest-environment-jsdom": "^30.4.1",
+    "tailwindcss": "^4.3.0",
     "ts-jest": "^29.4.9",
     "tsx": "^4.19.2",
+    "tsx": "^4.21.0",
     "typescript": "^5"
   }
 }
