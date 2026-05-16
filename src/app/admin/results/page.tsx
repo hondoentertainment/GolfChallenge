@@ -24,6 +24,7 @@ export default function AdminResultsPage() {
   const [fullPayoutUpdate, setFullPayoutUpdate] = useState(false);
   const [refreshingLast5, setRefreshingLast5] = useState(false);
   const [refreshingAllFinishes, setRefreshingAllFinishes] = useState(false);
+  const [fullPayoutRepair, setFullPayoutRepair] = useState(false);
   const [auditingPicks, setAuditingPicks] = useState(false);
   const [auditResult, setAuditResult] = useState<PickValueAuditReport | null>(null);
   const [message, setMessage] = useState("");
@@ -253,6 +254,30 @@ export default function AdminResultsPage() {
     finally { setRefreshingAllFinishes(false); }
   }
 
+  async function handleFullPayoutRepair() {
+    setFullPayoutRepair(true); setError(""); setMessage("");
+    try {
+      const res = await fetch("/api/admin/results", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "full-payout-repair" }),
+      });
+      const data = await res.json();
+      if (!res.ok) { setError(data.error); return; }
+      const r = data.refresh;
+      setMessage(
+        `Full payout repair done. ESPN +${r?.populateAll?.totalPopulated ?? 0}. ` +
+        `Tie-table rows ${r?.resultRowsUpdated ?? 0}. ` +
+        `Media overlay ${data.mediaApply?.updated ?? 0} prize cells. ` +
+        `Final reconcile +${data.finalReconcile?.created ?? 0}/${data.finalReconcile?.updated ?? 0}. ` +
+        `Badges refreshed.`,
+      );
+      const tr = await fetch("/api/admin/results").then((x) => x.json());
+      if (tr.tournaments) setTournaments(tr.tournaments);
+    } catch { setError("Failed full payout repair"); }
+    finally { setFullPayoutRepair(false); }
+  }
+
   async function handleUpdateAllPayouts() {
     setFullPayoutUpdate(true); setError(""); setMessage("");
     try {
@@ -306,15 +331,22 @@ export default function AdminResultsPage() {
           <div className="flex flex-wrap gap-2">
             <button onClick={handlePopulateAll} className="bg-accent hover:bg-accent-light text-primary-dark font-semibold px-4 py-2 rounded-lg text-sm">Populate All Completed</button>
             <button onClick={handleRefreshPursePayouts} disabled={refreshingPurses} className="bg-primary hover:bg-primary-light text-white font-semibold px-4 py-2 rounded-lg text-sm disabled:opacity-50">{refreshingPurses ? "Syncing…" : "Sync purses & payouts"}</button>
-            <button onClick={handleRefreshLastCompleted} disabled={refreshingLast5 || refreshingPurses || fullPayoutUpdate || refreshingAllFinishes}
+            <button onClick={handleRefreshLastCompleted} disabled={refreshingLast5 || refreshingPurses || fullPayoutUpdate || refreshingAllFinishes || fullPayoutRepair}
               className="bg-amber-600 hover:bg-amber-500 text-white font-semibold px-4 py-2 rounded-lg text-sm disabled:opacity-50">
               {refreshingLast5 ? "Re-syncing…" : "Re-sync last 5 completed"}
             </button>
-            <button onClick={handleRefreshAllCompletedFinishes} disabled={refreshingAllFinishes || refreshingLast5 || refreshingPurses || fullPayoutUpdate || finalizingAll}
+            <button onClick={handleRefreshAllCompletedFinishes} disabled={refreshingAllFinishes || refreshingLast5 || refreshingPurses || fullPayoutUpdate || finalizingAll || fullPayoutRepair}
               className="bg-orange-700 hover:bg-orange-600 text-white font-semibold px-4 py-2 rounded-lg text-sm disabled:opacity-50">
               {refreshingAllFinishes ? "Refreshing all…" : "Refresh all completed finishes"}
             </button>
-            <button onClick={handleUpdateAllPayouts} disabled={fullPayoutUpdate || refreshingPurses || finalizingAll || refreshingLast5 || refreshingAllFinishes}
+            <button
+              onClick={handleFullPayoutRepair}
+              disabled={fullPayoutRepair || refreshingAllFinishes || refreshingLast5 || refreshingPurses || fullPayoutUpdate || finalizingAll}
+              className="bg-teal-700 hover:bg-teal-600 text-white font-semibold px-4 py-2 rounded-lg text-sm disabled:opacity-50"
+            >
+              {fullPayoutRepair ? "Repairing…" : "Full payout repair + media"}
+            </button>
+            <button onClick={handleUpdateAllPayouts} disabled={fullPayoutUpdate || refreshingPurses || finalizingAll || refreshingLast5 || refreshingAllFinishes || fullPayoutRepair}
               className="bg-primary-dark hover:opacity-90 text-white font-semibold px-4 py-2 rounded-lg text-sm disabled:opacity-50">
               {fullPayoutUpdate ? "Updating…" : "Update all payouts & stats"}
             </button>
@@ -322,7 +354,7 @@ export default function AdminResultsPage() {
             <button
               type="button"
               onClick={handleAuditAllPicks}
-              disabled={auditingPicks || refreshingPurses || fullPayoutUpdate || refreshingLast5 || refreshingAllFinishes}
+              disabled={auditingPicks || refreshingPurses || fullPayoutUpdate || refreshingLast5 || refreshingAllFinishes || fullPayoutRepair}
               className="bg-teal-700 hover:bg-teal-600 text-white font-semibold px-4 py-2 rounded-lg text-sm disabled:opacity-50"
             >
               {auditingPicks ? "Auditing picks…" : "Audit all pick values"}

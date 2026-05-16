@@ -7,6 +7,7 @@ import {
   getPickDeadlineDisplay,
   PRIZE_PAYOUT_PERCENTAGES,
   MASTERS_PAYOUT_PERCENTAGES,
+  PGA_CHAMPIONSHIP_PAYOUT_PERCENTAGES,
   getPayoutTable,
   parsePosition,
   allocatePurseByFinishPositions,
@@ -315,7 +316,11 @@ describe('Masters Payout Structure', () => {
     expect(getPayoutTable('Masters Tournament')).toBe(MASTERS_PAYOUT_PERCENTAGES);
   });
 
-  test('getPayoutTable returns standard table for every other event', () => {
+  test('getPayoutTable returns PGA table for PGA Championship', () => {
+    expect(getPayoutTable('PGA Championship')).toBe(PGA_CHAMPIONSHIP_PAYOUT_PERCENTAGES);
+  });
+
+  test('getPayoutTable returns standard table for every other non-major', () => {
     expect(getPayoutTable('RBC Heritage')).toBe(PRIZE_PAYOUT_PERCENTAGES);
     expect(getPayoutTable('U.S. Open')).toBe(PRIZE_PAYOUT_PERCENTAGES);
     expect(getPayoutTable(undefined)).toBe(PRIZE_PAYOUT_PERCENTAGES);
@@ -370,5 +375,28 @@ describe('Masters Payout Structure', () => {
   test('allocatePurseByFinishPositions omits MC', () => {
     const m = allocatePurseByFinishPositions(20_000_000, undefined, [{ id: 'a', position: 'MC' }]);
     expect(m.size).toBe(0);
+  });
+});
+
+describe('PGA Championship 2026 payout grid', () => {
+  const purse = 20_500_000;
+  const pga = 'PGA Championship';
+
+  test('6th place matches published official amount (differs from standard Tour grid)', () => {
+    expect(calculatePrizeMoney(purse, 6, pga)).toBe(727_600);
+    expect(calculatePrizeMoney(20_000_000, 6, 'RBC Heritage')).toBe(720_000);
+  });
+
+  test('82nd place is paid per 2026 major schedule', () => {
+    expect(calculatePrizeMoney(purse, 82, pga)).toBe(23_900);
+  });
+
+  test('83rd is not paid by finish-position grid', () => {
+    expect(calculatePrizeMoney(purse, 83, pga)).toBe(0);
+  });
+
+  test('getTournamentPayouts reaches last paid spot', () => {
+    const payouts = getTournamentPayouts(purse, pga);
+    expect(payouts[payouts.length - 1]).toEqual({ position: 82, prizeMoney: 23_900 });
   });
 });

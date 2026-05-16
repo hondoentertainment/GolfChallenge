@@ -3,6 +3,14 @@ import { v4 as uuidv4 } from 'uuid';
 import { CHALLENGE_SEASON, CHALLENGE_TOURNAMENTS_START_ON_OR_AFTER } from './challenge-season';
 import { getLeagueMembers } from './leagues';
 import { getPickDeadline, calculatePrizeMoney, parsePosition, allocatePurseByFinishPositions, syncTournamentPursesFromSchedule } from './pga-schedule';
+import {
+  PRIZE_SOURCE_TIE_TABLE,
+  type PrizeMoneySource,
+} from './prize-money-db';
+import {
+  applyPublishedPayoutComplianceForTournament,
+  hasPublishedPayoutTable,
+} from './published-payout-compliance';
 import { logAction } from './audit';
 
 export interface Pick {
@@ -258,16 +266,25 @@ export async function getLeagueStandings(leagueId: string): Promise<{ userId: st
   return results.sort((a, b) => b.totalPrizeMoney - a.totalPrizeMoney);
 }
 
-export async function updateTournamentResult(tournamentId: string, golferId: string, position: string, prizeMoney: number, score?: string) {
+export async function updateTournamentResult(
+  tournamentId: string,
+  golferId: string,
+  position: string,
+  prizeMoney: number,
+  score?: string,
+  prizeSource: PrizeMoneySource = PRIZE_SOURCE_TIE_TABLE,
+) {
   const id = uuidv4();
   await execute(
-    `INSERT INTO tournament_results (id, tournament_id, golfer_id, position, prize_money, score)
-     VALUES ($1, $2, $3, $4, $5, $6)
+    `INSERT INTO tournament_results (id, tournament_id, golfer_id, position, prize_money, score, prize_source, prize_updated_at)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, NOW())
      ON CONFLICT(tournament_id, golfer_id) DO UPDATE SET
        position = EXCLUDED.position,
        prize_money = EXCLUDED.prize_money,
-       score = EXCLUDED.score`,
-    [id, tournamentId, golferId, position, prizeMoney, score || null]
+       score = EXCLUDED.score,
+       prize_source = EXCLUDED.prize_source,
+       prize_updated_at = NOW()`,
+    [id, tournamentId, golferId, position, prizeMoney, score || null, prizeSource],
   );
 }
 
@@ -365,7 +382,7 @@ export async function reconcilePickPayouts(): Promise<{ created: number; updated
     const { populateHistoricalTournament } = await import('./pga-data');
     for (const t of tournamentsNeedingHistorical) {
       try {
-        const result = await populateHistoricalTournament(t.tournament_id);
+        const result = await populateHistoricalTournament(t.tournament_id, { force: true });
         historicalFetched += result.populated;
       } catch {
         // Non-fatal — the table-calculated fallback below will still run
@@ -412,19 +429,21 @@ export async function reconcilePickPayouts(): Promise<{ created: number; updated
     const money = pos > 0 ? calculatePrizeMoney(row.purse, pos, row.tournament_name) : 0;
 
     if (!row.result_id) {
-      // No result row at all — create one
+      if (pos <= 0) {
+        continue;
+      }
       await execute(
-        `INSERT INTO tournament_results (id, tournament_id, golfer_id, position, prize_money)
-         VALUES ($1, $2, $3, $4, $5)
+        `INSERT INTO tournament_results (id, tournament_id, golfer_id, position, prize_money, prize_source, prize_updated_at)
+         VALUES ($1, $2, $3, $4, $5, $6, NOW())
          ON CONFLICT(tournament_id, golfer_id) DO NOTHING`,
-        [uuidv4(), row.tournament_id, row.golfer_id, row.position || '', money]
+        [uuidv4(), row.tournament_id, row.golfer_id, row.position || '', money, PRIZE_SOURCE_TIE_TABLE],
       );
       created++;
     } else if (money > 0) {
       // Result exists with position but $0 — backfill the calculated payout
       await execute(
-        `UPDATE tournament_results SET prize_money = $1 WHERE id = $2`,
-        [money, row.result_id]
+        `UPDATE tournament_results SET prize_money = $1, prize_source = $2, prize_updated_at = NOW() WHERE id = $3`,
+        [money, PRIZE_SOURCE_TIE_TABLE, row.result_id],
       );
       updated++;
     }
@@ -432,7 +451,12 @@ export async function reconcilePickPayouts(): Promise<{ created: number; updated
 
   const tournamentsToRecalc = new Set(orphanedPicks.map((r) => r.tournament_id));
   for (const tid of tournamentsToRecalc) {
+    const t = await queryOne<{ name: string }>(`SELECT name FROM tournaments WHERE id = $1`, [tid]);
+    if (!t) continue;
     await recalculateTournamentResultPayoutsFromPurse(tid);
+    if (hasPublishedPayoutTable(t.name)) {
+      await applyPublishedPayoutComplianceForTournament(tid, t.name);
+    }
   }
 
   return { created, updated, historicalFetched };
@@ -458,7 +482,10 @@ export async function recalculateTournamentResultPayoutsFromPurse(
   const alloc = allocatePurseByFinishPositions(t.purse, t.name, rows);
   let updated = 0;
   for (const [id, money] of alloc) {
-    await execute(`UPDATE tournament_results SET prize_money = $1 WHERE id = $2`, [money, id]);
+    await execute(
+      `UPDATE tournament_results SET prize_money = $1, prize_source = $2, prize_updated_at = NOW() WHERE id = $3`,
+      [money, PRIZE_SOURCE_TIE_TABLE, id],
+    );
     updated++;
   }
   return { updated, hadResultRows: true };

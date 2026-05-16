@@ -2,6 +2,9 @@
  * Sync purses from `pga-schedule`, recompute every finisher's `tournament_results.prize_money`
  * from current purses/positions, reconcile picks, then refresh badges — updates dollars shown in standings.
  *
+ * This overwrites result prizes with the mathematical tie table. Do not run right after
+ * `apply-published-media-payouts` / media alignment unless you intend to discard those dollars.
+ *
  * For a full refresh (force ESPN historical on every completed event + tie-table payouts + reconcile + badges), use:
  *   npm run update-all-values
  *   (same as `refresh-all-finishes` / admin job "Refresh all completed finishes".)
@@ -11,6 +14,9 @@
  *
  * For production, use a connection string that points at the Neon database Vercel uses
  * (e.g. after `npx vercel env pull .env.production.local` and --env-file that file).
+ *
+ * If you have applied transcribed media payouts (`apply-published-media-sync-reconcile`),
+ * this command will overwrite those dollars for all events — run media apply + reconcile again if needed.
  */
 import { initializeDb, query } from '../src/lib/db';
 import { syncPursesAndRecalculateParticipantTotals } from '../src/lib/picks';

@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getCurrentUser } from '@/lib/auth';
 import { updateTournamentResult, updateTournamentStatus, getTournaments, getTournament, getGolfers, reconcilePickPayouts, syncPursesAndRecalculateParticipantTotals, recalculateTournamentResultPayoutsFromPurse, recalculateAllTournamentResultPayoutsFromPurses } from '@/lib/picks';
-import { syncTournamentResults, finalizeTournamentPayouts, finalizeRecentTournaments, populateHistoricalTournament, populateAllCompletedTournaments, getTournamentCoverage, refreshLastCompletedTournaments, refreshAllCompletedTournamentFinishes } from '@/lib/pga-data';
+import { syncTournamentResults, finalizeTournamentPayouts, finalizeRecentTournaments, populateHistoricalTournament, populateAllCompletedTournaments, getTournamentCoverage, refreshLastCompletedTournaments, refreshAllCompletedTournamentFinishes, runFullPayoutRepairPipeline } from '@/lib/pga-data';
 import { notifyLeagueMembers } from '@/lib/notifications';
 import { recalculateBadges } from '@/lib/badges';
 import { logAction } from '@/lib/audit';
@@ -9,6 +9,7 @@ import { query, queryOne } from '@/lib/db';
 import { ensureSeeded } from '@/lib/seed';
 import { calculatePrizeMoney, parsePosition } from '@/lib/pga-schedule';
 import { CHALLENGE_SEASON, CHALLENGE_TOURNAMENTS_START_ON_OR_AFTER } from '@/lib/challenge-season';
+import { PRIZE_SOURCE_MANUAL } from '@/lib/prize-money-db';
 
 // GET: list tournaments and golfers for admin form
 export async function GET() {
@@ -89,6 +90,18 @@ export async function POST(req: NextRequest) {
       await logAction(
         'refresh_all_completed_finishes',
         `populate +${result.populateAll.totalPopulated}; payouts ${result.resultRowsUpdated} rows; reconcile +${result.reconciled.created}/${result.reconciled.updated}`,
+        undefined,
+        user.id,
+      );
+      return NextResponse.json(result);
+    }
+
+    /** Like refresh-all-completed-finishes, then overlay transcribed media payouts + final reconcile + badges. */
+    if (body.action === 'full-payout-repair') {
+      const result = await runFullPayoutRepairPipeline();
+      await logAction(
+        'full_payout_repair',
+        `media rows updated ${result.mediaApply.updated}; final reconcile +${result.finalReconcile.created}/${result.finalReconcile.updated}; historical refetch ${result.finalReconcile.historicalFetched}`,
         undefined,
         user.id,
       );
@@ -215,7 +228,7 @@ export async function POST(req: NextRequest) {
         const prizeMoney = rawPrize > 0
           ? rawPrize
           : calculatePrizeMoney(purse, parsePosition(posStr), tournamentName);
-        await updateTournamentResult(tournamentId, r.golferId, posStr, prizeMoney, r.score);
+        await updateTournamentResult(tournamentId, r.golferId, posStr, prizeMoney, r.score, PRIZE_SOURCE_MANUAL);
         updated++;
       }
     }

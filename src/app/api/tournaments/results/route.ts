@@ -12,6 +12,7 @@ export async function GET() {
       position: string;
       prize_money: number;
       score: string;
+      prize_source: string | null;
     }>(`
       SELECT
         t.id as tournament_id,
@@ -19,7 +20,8 @@ export async function GET() {
         g.name as golfer_name,
         tr.position,
         tr.prize_money::int as prize_money,
-        tr.score
+        tr.score,
+        tr.prize_source
       FROM tournament_results tr
       JOIN tournaments t ON t.id = tr.tournament_id
       JOIN golfers g ON g.id = tr.golfer_id
@@ -27,7 +29,20 @@ export async function GET() {
       ORDER BY t.start_date ASC, tr.prize_money DESC, tr.position ASC
     `, ['2025-2026']);
 
-    const grouped: Record<string, { tournamentId: string; tournamentName: string; results: { golferName: string; position: string; prizeMoney: number; score: string }[] }> = {};
+    const grouped: Record<
+      string,
+      {
+        tournamentId: string;
+        tournamentName: string;
+        results: {
+          golferName: string;
+          position: string;
+          prizeMoney: number;
+          score: string;
+          prizeSource: string | null;
+        }[];
+      }
+    > = {};
 
     for (const r of rows) {
       if (!grouped[r.tournament_id]) {
@@ -42,6 +57,7 @@ export async function GET() {
         position: r.position,
         prizeMoney: r.prize_money,
         score: r.score,
+        prizeSource: r.prize_source,
       });
     }
 

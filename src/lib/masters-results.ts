@@ -1,6 +1,7 @@
 import { queryOne, execute } from './db';
 import { v4 as uuidv4 } from 'uuid';
 import { auditPayouts, PayoutEntry, AuditContext } from './payout-audit';
+import { PRIZE_SOURCE_SEED } from './prize-money-db';
 
 // 2026 Masters Tournament final results. Purse: $22.5M. Cut: +4 (148).
 // 54 players made the cut from a 91-player field.
@@ -139,13 +140,15 @@ export async function seedMastersResults() {
     if (!golfer) continue;
 
     await execute(
-      `INSERT INTO tournament_results (id, tournament_id, golfer_id, position, prize_money, score)
-       VALUES ($1, $2, $3, $4, $5, $6)
+      `INSERT INTO tournament_results (id, tournament_id, golfer_id, position, prize_money, score, prize_source, prize_updated_at)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, NOW())
        ON CONFLICT(tournament_id, golfer_id) DO UPDATE SET
          position = EXCLUDED.position,
          prize_money = EXCLUDED.prize_money,
-         score = EXCLUDED.score`,
-      [uuidv4(), masters.id, golfer.id, r.position, r.prizeMoney, r.score]
+         score = EXCLUDED.score,
+         prize_source = EXCLUDED.prize_source,
+         prize_updated_at = NOW()`,
+      [uuidv4(), masters.id, golfer.id, r.position, r.prizeMoney, r.score, PRIZE_SOURCE_SEED],
     );
   }
 }

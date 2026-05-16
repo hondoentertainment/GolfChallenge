@@ -35,7 +35,7 @@ async function main() {
     console.log(JSON.stringify(report.pickIssues.slice(0, pickSample), null, 2));
   }
 
-  console.error('\nAudit failed: run npm run recalc-earnings or npm run update-all-values, then re-run this script.');
+  console.error('\nAudit failed: run `npm run full-payout-repair` (recommended), or `npm run update-all-values` then `npm run apply-published-media-sync-reconcile`, then re-run this script.');
   process.exit(1);
 }
 

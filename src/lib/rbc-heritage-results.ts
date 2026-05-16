@@ -1,6 +1,7 @@
 import { queryOne, execute } from './db';
 import { v4 as uuidv4 } from 'uuid';
 import { auditPayouts, PayoutEntry, AuditContext } from './payout-audit';
+import { PRIZE_SOURCE_SEED } from './prize-money-db';
 
 // 2026 RBC Heritage final results (Harbour Town Golf Links, April 16-19).
 // Signature Event: $20M purse, 80-player field, no cut — everyone gets paid (min $30,000).
@@ -82,13 +83,15 @@ export async function seedRBCHeritageResults() {
     if (!golfer) continue;
 
     await execute(
-      `INSERT INTO tournament_results (id, tournament_id, golfer_id, position, prize_money, score)
-       VALUES ($1, $2, $3, $4, $5, $6)
+      `INSERT INTO tournament_results (id, tournament_id, golfer_id, position, prize_money, score, prize_source, prize_updated_at)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, NOW())
        ON CONFLICT(tournament_id, golfer_id) DO UPDATE SET
          position = EXCLUDED.position,
          prize_money = EXCLUDED.prize_money,
-         score = EXCLUDED.score`,
-      [uuidv4(), tournament.id, golfer.id, r.position, r.prizeMoney, r.score]
+         score = EXCLUDED.score,
+         prize_source = EXCLUDED.prize_source,
+         prize_updated_at = NOW()`,
+      [uuidv4(), tournament.id, golfer.id, r.position, r.prizeMoney, r.score, PRIZE_SOURCE_SEED],
     );
   }
 }

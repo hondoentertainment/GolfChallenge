@@ -17,7 +17,12 @@
     "refresh-last-completed": "node --env-file=.env.local ./node_modules/tsx/dist/cli.mjs scripts/refresh-last-completed.ts",
     "refresh-all-finishes": "node --env-file=.env.local ./node_modules/tsx/dist/cli.mjs scripts/refresh-all-completed-finishes.ts",
     "update-all-values": "node --env-file=.env.local ./node_modules/tsx/dist/cli.mjs scripts/refresh-all-completed-finishes.ts",
-    "apply-official-payouts": "node --env-file=.env.local ./node_modules/tsx/dist/cli.mjs scripts/apply-official-payouts.ts"
+    "apply-official-payouts": "node --env-file=.env.local ./node_modules/tsx/dist/cli.mjs scripts/apply-official-payouts.ts",
+    "audit-published-payouts": "node --env-file=.env.local ./node_modules/tsx/dist/cli.mjs scripts/audit-published-payouts.ts",
+    "apply-published-media-payouts": "node --env-file=.env.local ./node_modules/tsx/dist/cli.mjs scripts/apply-published-media-payouts.ts",
+    "apply-published-media-sync-reconcile": "node --env-file=.env.local ./node_modules/tsx/dist/cli.mjs scripts/apply-published-media-sync-reconcile.ts",
+    "sync-schedule-purses": "node --env-file=.env.local ./node_modules/tsx/dist/cli.mjs scripts/sync-schedule-purses.ts",
+    "full-payout-repair": "node --env-file=.env.local ./node_modules/tsx/dist/cli.mjs scripts/full-payout-repair.ts"
   },
   "dependencies": {
     "@neondatabase/serverless": "^1.1.0",

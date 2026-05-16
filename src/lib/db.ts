@@ -83,6 +83,8 @@ export async function initializeDb() {
       position TEXT,
       prize_money INTEGER DEFAULT 0,
       score TEXT,
+      prize_source TEXT,
+      prize_updated_at TIMESTAMPTZ,
       UNIQUE(tournament_id, golfer_id)
     )`,
     `CREATE TABLE IF NOT EXISTS picks (
@@ -161,6 +163,8 @@ export async function initializeDb() {
     `CREATE INDEX IF NOT EXISTS idx_messages_league ON league_messages(league_id)`,
     `CREATE INDEX IF NOT EXISTS idx_notifications_user ON notifications(user_id)`,
     `CREATE INDEX IF NOT EXISTS idx_tournament_results_tournament ON tournament_results(tournament_id)`,
+    `ALTER TABLE tournament_results ADD COLUMN IF NOT EXISTS prize_source TEXT`,
+    `ALTER TABLE tournament_results ADD COLUMN IF NOT EXISTS prize_updated_at TIMESTAMPTZ`,
     `CREATE INDEX IF NOT EXISTS idx_audit_log_league ON audit_log(league_id)`,
     `CREATE INDEX IF NOT EXISTS idx_badges_user ON badges(user_id, league_id)`,
   ];

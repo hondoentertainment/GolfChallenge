@@ -5,10 +5,12 @@ import { query, queryOne } from './db';
 import { CHALLENGE_SEASON, CHALLENGE_TOURNAMENTS_START_ON_OR_AFTER } from './challenge-season';
 import { updateTournamentResult, updateTournamentStatus, getGolfers, getTournament, reconcilePickPayouts, recalculateTournamentResultPayoutsFromPurse, recalculateAllTournamentResultPayoutsFromPurses } from './picks';
 import { allocatePurseByFinishPositions, parsePosition, syncTournamentPursesFromSchedule } from './pga-schedule';
+import { buildEspnGolferIdLookup, resolveGolferIdFromEspnDisplayName } from './golfer-name-lookup';
 import { recalculateBadges } from './badges';
 import { notifyLeagueMembers } from './notifications';
 import { logAction } from './audit';
 import { auditPayouts } from './payout-audit';
+import { applyPublishedPayoutCompliance } from './published-payout-compliance';
 
 interface ESPNCompetitor {
   athlete: { displayName: string };
@@ -144,7 +146,7 @@ export async function syncTournamentResults(tournamentId: string): Promise<{ upd
   }
 
   const golfers = await getGolfers();
-  const golferMap = new Map(golfers.map(g => [g.name.toLowerCase(), g.id]));
+  const golferMap = buildEspnGolferIdLookup(golfers);
 
   const tournament = await getTournament(tournamentId);
   const purse = tournament?.purse ?? 0;
@@ -184,7 +186,7 @@ export async function syncTournamentResults(tournamentId: string): Promise<{ upd
   for (const competitor of competition.competitors) {
     const name = competitor.athlete?.displayName;
     if (!name) continue;
-    const golferId = golferMap.get(name.toLowerCase());
+    const golferId = resolveGolferIdFromEspnDisplayName(name, golferMap);
     if (!golferId) continue;
     matched.push({
       golferId,
@@ -382,6 +384,31 @@ export async function refreshAllCompletedTournamentFinishes(): Promise<{
   };
 }
 
+/**
+ * Full repair: live/historical ESPN for every completed event, tie-table prizes,
+ * reconcile orphans, overlay transcribed media payouts for Masters/RBC/Cadillac/Truist,
+ * reconcile again, then refresh badges.
+ */
+export async function runFullPayoutRepairPipeline(): Promise<{
+  refresh: Awaited<ReturnType<typeof refreshAllCompletedTournamentFinishes>>;
+  mediaApply: Awaited<ReturnType<typeof applyPublishedPayoutCompliance>>;
+  finalReconcile: Awaited<ReturnType<typeof reconcilePickPayouts>>;
+}> {
+  const refresh = await refreshAllCompletedTournamentFinishes();
+  const mediaApply = await applyPublishedPayoutCompliance();
+  const finalReconcile = await reconcilePickPayouts();
+  const leagues = await query<{ league_id: string }>(
+    `SELECT DISTINCT p.league_id FROM picks p
+     JOIN tournaments t ON t.id = p.tournament_id
+     WHERE t.season = $1 AND (t.start_date::date) >= $2::date`,
+    [CHALLENGE_SEASON, CHALLENGE_TOURNAMENTS_START_ON_OR_AFTER],
+  );
+  for (const l of leagues) {
+    await recalculateBadges(l.league_id);
+  }
+  return { refresh, mediaApply, finalReconcile };
+}
+
 // Coverage report: for each tournament, count how many golfers have a result row.
 // Used by admin to verify that every event has a fully populated leaderboard.
 export async function getTournamentCoverage(): Promise<{
@@ -467,7 +494,7 @@ export async function populateHistoricalTournament(
   }
 
   const golfers = await getGolfers();
-  const golferMap = new Map(golfers.map(g => [g.name.toLowerCase(), g.id]));
+  const golferMap = buildEspnGolferIdLookup(golfers);
 
   // Build leaderboard from ESPN (positions + scores); prize dollars follow in-repo
   // PGA Tour / Masters payout tables + tie rules, not ESPN's earnings field.
@@ -477,7 +504,7 @@ export async function populateHistoricalTournament(
   for (const competitor of summary.competitors) {
     const name = competitor.athlete?.displayName;
     if (!name) { skipped++; continue; }
-    const golferId = golferMap.get(name.toLowerCase());
+    const golferId = resolveGolferIdFromEspnDisplayName(name, golferMap);
     if (!golferId) { skipped++; continue; }
 
     matched.push({

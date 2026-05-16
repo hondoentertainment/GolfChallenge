@@ -6,6 +6,7 @@
 import { initializeDb, queryOne, execute } from '../src/lib/db';
 import { recalculateTournamentResultPayoutsFromPurse } from '../src/lib/picks';
 import { CHALLENGE_SEASON } from '../src/lib/challenge-season';
+import { PRIZE_SOURCE_MANUAL } from '../src/lib/prize-money-db';
 import { v4 as uuidv4 } from 'uuid';
 
 const TOURNAMENT = 'Cadillac Championship';
@@ -49,9 +50,9 @@ async function main() {
   if (!winnerRow) {
     const id = uuidv4();
     await execute(
-      `INSERT INTO tournament_results (id, tournament_id, golfer_id, position, prize_money, score)
-       VALUES ($1, $2, $3, '1', 0, NULL)`,
-      [id, t.id, winnerG.id],
+      `INSERT INTO tournament_results (id, tournament_id, golfer_id, position, prize_money, score, prize_source, prize_updated_at)
+       VALUES ($1, $2, $3, '1', 0, NULL, $4, NOW())`,
+      [id, t.id, winnerG.id, PRIZE_SOURCE_MANUAL],
     );
     console.log('Inserted winner row:', WINNER);
   } else {

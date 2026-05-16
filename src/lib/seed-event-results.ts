@@ -1,5 +1,6 @@
 import { queryOne, execute } from './db';
 import { v4 as uuidv4 } from 'uuid';
+import { PRIZE_SOURCE_SEED } from './prize-money-db';
 
 export type SeededResultRow = {
   name: string;
@@ -22,10 +23,10 @@ async function seedResultsForTournamentIfEmpty(tournamentId: string, rows: Seede
     if (!golfer) continue;
 
     await execute(
-      `INSERT INTO tournament_results (id, tournament_id, golfer_id, position, prize_money, score)
-       VALUES ($1, $2, $3, $4, $5, $6)
+      `INSERT INTO tournament_results (id, tournament_id, golfer_id, position, prize_money, score, prize_source, prize_updated_at)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, NOW())
        ON CONFLICT(tournament_id, golfer_id) DO NOTHING`,
-      [uuidv4(), tournamentId, golfer.id, r.position, r.prizeMoney, r.score]
+      [uuidv4(), tournamentId, golfer.id, r.position, r.prizeMoney, r.score, PRIZE_SOURCE_SEED],
     );
   }
 }

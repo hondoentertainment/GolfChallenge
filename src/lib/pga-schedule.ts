@@ -9,7 +9,7 @@ export const PGA_SCHEDULE_2025_2026 = [
   // Zurich Classic EXCLUDED (team event) - Apr 23-26
   { name: "Cadillac Championship", startDate: "2026-04-30", endDate: "2026-05-03", course: "Trump National Doral", location: "Miami, FL", purse: 20000000 },
   { name: "Truist Championship", startDate: "2026-05-07", endDate: "2026-05-10", course: "Quail Hollow Club", location: "Charlotte, NC", purse: 20000000 },
-  { name: "PGA Championship", startDate: "2026-05-14", endDate: "2026-05-17", course: "Aronimink Golf Club", location: "Newtown Square, PA", purse: 19000000 },
+  { name: "PGA Championship", startDate: "2026-05-14", endDate: "2026-05-17", course: "Aronimink Golf Club", location: "Newtown Square, PA", purse: 20500000 },
   { name: "CJ Cup Byron Nelson", startDate: "2026-05-21", endDate: "2026-05-24", course: "TPC Craig Ranch", location: "McKinney, TX", purse: 10300000 },
   { name: "Charles Schwab Challenge", startDate: "2026-05-28", endDate: "2026-05-31", course: "Colonial Country Club", location: "Fort Worth, TX", purse: 9500000 },
   { name: "The Memorial Tournament", startDate: "2026-06-04", endDate: "2026-06-07", course: "Muirfield Village Golf Club", location: "Dublin, OH", purse: 20000000 },
@@ -140,10 +140,102 @@ export const MASTERS_PAYOUT_PERCENTAGES: Record<number, number> = {
   50: 0.0026,
 };
 
+// PGA Championship 2026 — place payouts on $20.5M (Golf Digest; PGA of America announcement).
+// Percentages are official dollars / purse so Math.round(purse * pct) matches media at $20.5M.
+const PGA_CHAMPIONSHIP_2026_PLACE_USD: Record<number, number> = {
+  1: 3_690_000,
+  2: 2_214_000,
+  3: 1_394_000,
+  4: 984_000,
+  5: 820_000,
+  6: 727_600,
+  7: 681_050,
+  8: 636_400,
+  9: 593_700,
+  10: 553_000,
+  11: 514_160,
+  12: 477_300,
+  13: 442_370,
+  14: 409_390,
+  15: 378_340,
+  16: 349_240,
+  17: 322_080,
+  18: 296_850,
+  19: 273_570,
+  20: 252_230,
+  21: 232_830,
+  22: 215_370,
+  23: 199_840,
+  24: 187_230,
+  25: 175_110,
+  26: 163_460,
+  27: 152_310,
+  28: 141_640,
+  29: 131_450,
+  30: 121_750,
+  31: 113_990,
+  32: 107_200,
+  33: 101_380,
+  34: 96_530,
+  35: 92_650,
+  36: 88_960,
+  37: 85_370,
+  38: 81_880,
+  39: 78_480,
+  40: 75_180,
+  41: 71_980,
+  42: 68_880,
+  43: 65_870,
+  44: 62_960,
+  45: 60_150,
+  46: 57_430,
+  47: 54_810,
+  48: 52_290,
+  49: 49_860,
+  50: 47_540,
+  51: 45_300,
+  52: 43_170,
+  53: 41_130,
+  54: 39_190,
+  55: 37_350,
+  56: 35_600,
+  57: 33_950,
+  58: 32_600,
+  59: 31_430,
+  60: 30_460,
+  61: 29_690,
+  62: 29_120,
+  63: 28_640,
+  64: 28_180,
+  65: 27_740,
+  66: 27_310,
+  67: 26_890,
+  68: 26_480,
+  69: 26_080,
+  70: 25_690,
+  71: 25_360,
+  72: 25_040,
+  73: 24_730,
+  74: 24_530,
+  75: 24_230,
+  76: 24_230,
+  77: 24_130,
+  78: 24_040,
+  79: 23_970,
+  80: 23_930,
+  81: 23_910,
+  82: 23_900,
+};
+
+export const PGA_CHAMPIONSHIP_PAYOUT_PERCENTAGES: Record<number, number> = Object.fromEntries(
+  Object.entries(PGA_CHAMPIONSHIP_2026_PLACE_USD).map(([place, usd]) => [Number(place), usd / 20_500_000]),
+) as Record<number, number>;
+
 // Resolve the correct payout table for a tournament. The Masters uses its own
-// top-heavy structure; every other PGA Tour event uses the standard full-field table.
+// top-heavy structure; the PGA Championship uses the 2026 major purse grid; other events use the standard table.
 export function getPayoutTable(tournamentName?: string): Record<number, number> {
   if (tournamentName === 'Masters Tournament') return MASTERS_PAYOUT_PERCENTAGES;
+  if (tournamentName === 'PGA Championship') return PGA_CHAMPIONSHIP_PAYOUT_PERCENTAGES;
   return PRIZE_PAYOUT_PERCENTAGES;
 }
 
@@ -175,10 +267,20 @@ export function calculatePrizeMoney(purse: number, position: number, tournamentN
   return 0;
 }
 
+function maxPaidFinishPosition(tournamentName?: string): number {
+  const table = getPayoutTable(tournamentName);
+  const nums = Object.keys(table)
+    .map((k) => Number(k))
+    .filter((n) => Number.isInteger(n) && n > 0);
+  if (nums.length === 0) return 65;
+  return Math.max(...nums);
+}
+
 // Precomputed prize payouts for a tournament (positions 1 through the last paid position)
 export function getTournamentPayouts(purse: number, tournamentName?: string): { position: number; prizeMoney: number }[] {
   const payouts: { position: number; prizeMoney: number }[] = [];
-  for (let pos = 1; pos <= 65; pos++) {
+  const cap = maxPaidFinishPosition(tournamentName);
+  for (let pos = 1; pos <= cap; pos++) {
     const money = calculatePrizeMoney(purse, pos, tournamentName);
     if (money > 0) {
       payouts.push({ position: pos, prizeMoney: money });
