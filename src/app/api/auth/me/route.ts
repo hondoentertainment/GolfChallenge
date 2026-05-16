@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { getCurrentUser, logout } from '@/lib/auth';
+import { canAccessMetricsReview } from '@/lib/metrics-review-access';
 import { ensureSeeded } from '@/lib/seed';
 
 export async function GET() {
@@ -9,7 +10,12 @@ export async function GET() {
     if (!user) {
       return NextResponse.json({ user: null }, { status: 401 });
     }
-    return NextResponse.json({ user });
+    return NextResponse.json({
+      user: {
+        ...user,
+        metrics_review_access: canAccessMetricsReview(user),
+      },
+    });
   } catch {
     return NextResponse.json({ user: null }, { status: 401 });
   }

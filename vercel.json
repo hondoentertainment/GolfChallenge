@@ -6,7 +6,11 @@
     },
     {
       "path": "/api/cron/tournament-sync",
-      "schedule": "0 */2 * * 4,5,6,0"
+      "schedule": "0 */2 * * 4,5,6"
+    },
+    {
+      "path": "/api/cron/tournament-sync",
+      "schedule": "0 * * * 0"
     },
     {
       "path": "/api/cron/pick-reminders",
@@ -14,7 +18,11 @@
     },
     {
       "path": "/api/cron/finalize-payouts",
-      "schedule": "0 6 * * 1"
+      "schedule": "30 23 * * 0"
+    },
+    {
+      "path": "/api/cron/finalize-payouts",
+      "schedule": "0 3,6 * * 1"
     },
     {
       "path": "/api/cron/weekly-recap",

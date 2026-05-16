@@ -1,14 +1,13 @@
+import { verifyCronAuth } from '@/lib/cron-auth';
 import { NextRequest, NextResponse } from 'next/server';
 import { syncTournamentResults } from '@/lib/pga-data';
-import { getCurrentTournament, reconcilePickPayouts } from '@/lib/picks';
+import { getCurrentTournament, reconcilePickPayouts, recalculateTournamentResultPayoutsFromPurse } from '@/lib/picks';
 import { ensureSeeded } from '@/lib/seed';
 
 // Runs Sunday 11pm UTC - auto-sync tournament results from ESPN
 export async function GET(req: NextRequest) {
-  // Verify cron secret in production
-  if (process.env.CRON_SECRET && req.headers.get('authorization') !== `Bearer ${process.env.CRON_SECRET}`) {
-    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-  }
+  const authError = verifyCronAuth(req);
+  if (authError) return authError;
   await ensureSeeded();
   try {
     const tournament = await getCurrentTournament();
@@ -18,6 +17,7 @@ export async function GET(req: NextRequest) {
 
     // Backfill any picks still missing payouts after the sync
     const reconciled = await reconcilePickPayouts();
+    await recalculateTournamentResultPayoutsFromPurse(tournament.id);
 
     return NextResponse.json({ tournament: tournament.name, ...result, reconciled });
   } catch (e) {

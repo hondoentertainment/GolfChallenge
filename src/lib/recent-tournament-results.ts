@@ -1,10 +1,12 @@
 import { calculatePrizeMoney } from './pga-schedule';
-import { seedEventResultsIfEmpty, type SeededResultRow } from './seed-event-results';
+import { seedEventResultsIfPastEndAndEmpty, type SeededResultRow } from './seed-event-results';
 
 const SEASON = '2025-2026';
 const PURSE_20M = 20_000_000;
 
-// Finishing scores 1st → 50th (illustrative); prize money always from standard full-field table × purse.
+// Illustrative leaderboards for standard $20M events (not the audited Masters/RBC seeds).
+// Seeding runs only after the tournament `end_date` is in the past—see seedEventResultsIfPastEndAndEmpty.
+
 const SCORE_LADDER_50 = [
   '-16',
   '-15',
@@ -56,59 +58,6 @@ const SCORE_LADDER_50 = [
   '+10',
   '+10',
   '+11',
-] as const;
-
-const RBC_2026_NAMES = [
-  'Xander Schauffele',
-  'Tommy Fleetwood',
-  'Patrick Cantlay',
-  'Collin Morikawa',
-  'Russell Henley',
-  'Sam Burns',
-  'Shane Lowry',
-  'Brian Harman',
-  'Wyndham Clark',
-  'Sahith Theegala',
-  'Hideki Matsuyama',
-  'Jordan Spieth',
-  'Justin Thomas',
-  'Matt Fitzpatrick',
-  'Adam Scott',
-  'Akshay Bhatia',
-  'Cameron Young',
-  'Robert MacIntyre',
-  'Tyrrell Hatton',
-  'Justin Rose',
-  'Tom Kim',
-  'Sungjae Im',
-  'Max Homa',
-  'Viktor Hovland',
-  'Corey Conners',
-  'Tony Finau',
-  'Davis Thompson',
-  'Denny McCarthy',
-  'Chris Kirk',
-  'Byeong Hun An',
-  'Sepp Straka',
-  'Min Woo Lee',
-  'Si Woo Kim',
-  'Billy Horschel',
-  'Aaron Rai',
-  'Tom Hoge',
-  'Eric Cole',
-  'Austin Eckroat',
-  'Keith Mitchell',
-  'Alex Noren',
-  'Beau Hossler',
-  'Mackenzie Hughes',
-  'Nick Taylor',
-  'Christiaan Bezuidenhout',
-  'J.T. Poston',
-  'Harris English',
-  'Taylor Moore',
-  'Luke List',
-  'Kevin Kisner',
-  'Joel Dahmen',
 ] as const;
 
 const CADILLAC_2026_NAMES = [
@@ -164,6 +113,59 @@ const CADILLAC_2026_NAMES = [
   'Brendan Steele',
 ] as const;
 
+const TRUIST_2026_NAMES = [
+  'Collin Morikawa',
+  'Xander Schauffele',
+  'Viktor Hovland',
+  'Patrick Cantlay',
+  'Sam Burns',
+  'Tony Finau',
+  'Hideki Matsuyama',
+  'Tommy Fleetwood',
+  'Shane Lowry',
+  'Russell Henley',
+  'Brian Harman',
+  'Sungjae Im',
+  'Matt Fitzpatrick',
+  'Jordan Spieth',
+  'Max Homa',
+  'Tom Kim',
+  'Justin Thomas',
+  'Cameron Young',
+  'Wyndham Clark',
+  'Sahith Theegala',
+  'Corey Conners',
+  'Denny McCarthy',
+  'Min Woo Lee',
+  'Si Woo Kim',
+  'Billy Horschel',
+  'Akshay Bhatia',
+  'Robert MacIntyre',
+  'Tyrrell Hatton',
+  'Justin Rose',
+  'Adam Scott',
+  'Harris English',
+  'Eric Cole',
+  'Austin Eckroat',
+  'Keith Mitchell',
+  'Alex Noren',
+  'Beau Hossler',
+  'Mackenzie Hughes',
+  'Nick Taylor',
+  'Christiaan Bezuidenhout',
+  'J.T. Poston',
+  'Taylor Moore',
+  'Luke List',
+  'Kevin Kisner',
+  'Joel Dahmen',
+  'Davis Thompson',
+  'Aaron Rai',
+  'Tom Hoge',
+  'Byeong Hun An',
+  'Sepp Straka',
+  'Harry Hall',
+] as const;
+
 function buildStandardRows(names: readonly string[]): SeededResultRow[] {
   return names.map((name, i) => {
     const place = i + 1;
@@ -176,16 +178,16 @@ function buildStandardRows(names: readonly string[]): SeededResultRow[] {
   });
 }
 
-export async function seedRbcHeritageResults() {
-  await seedEventResultsIfEmpty('RBC Heritage', SEASON, buildStandardRows(RBC_2026_NAMES));
-}
-
 export async function seedCadillacChampionshipResults() {
-  await seedEventResultsIfEmpty('Cadillac Championship', SEASON, buildStandardRows(CADILLAC_2026_NAMES));
+  await seedEventResultsIfPastEndAndEmpty('Cadillac Championship', SEASON, buildStandardRows(CADILLAC_2026_NAMES));
 }
 
-/** Completed events after the Masters, in calendar order (for standings + public recap). */
-export async function seedRecentTournamentResults() {
-  await seedRbcHeritageResults();
+export async function seedTruistChampionshipResults() {
+  await seedEventResultsIfPastEndAndEmpty('Truist Championship', SEASON, buildStandardRows(TRUIST_2026_NAMES));
+}
+
+/** Illustrative seeds for tour events after audited Masters/RBC (date-gated). */
+export async function seedIllustrativeTourResultsAfterRbc() {
   await seedCadillacChampionshipResults();
+  await seedTruistChampionshipResults();
 }
