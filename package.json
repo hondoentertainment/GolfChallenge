@@ -11,7 +11,7 @@
     "start": "next start",
     "lint": "eslint",
     "test": "jest",
-    "finalize:recent": "tsx --env-file-if-exists=.env --env-file-if-exists=.env.local scripts/finalize-recent.ts"
+    "finalize:recent": "tsx --env-file-if-exists=.env --env-file-if-exists=.env.local scripts/finalize-recent.ts",
     "recalc-earnings": "node --env-file=.env.local ./node_modules/tsx/dist/cli.mjs scripts/recalculate-participant-earnings.ts",
     "audit-payouts": "node --env-file=.env.local ./node_modules/tsx/dist/cli.mjs scripts/audit-pick-payouts.ts",
     "refresh-last-completed": "node --env-file=.env.local ./node_modules/tsx/dist/cli.mjs scripts/refresh-last-completed.ts",
@@ -45,7 +45,6 @@
     "jest-environment-jsdom": "^30.4.1",
     "tailwindcss": "^4.3.0",
     "ts-jest": "^29.4.9",
-    "tsx": "^4.19.2",
     "tsx": "^4.21.0",
     "typescript": "^5"
   }
