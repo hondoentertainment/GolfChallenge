@@ -191,7 +191,9 @@ async function fetchESPNEventScoreboard(
   startDate: string,
   endDate?: string,
 ): Promise<{ competitors: ESPNCompetitor[]; eventName: string } | null> {
-  const dates = [...new Set([startDate, endDate].filter(Boolean))].map((d) => d.replace(/-/g, ''));
+  const dates = [...new Set([startDate, endDate].filter((d): d is string => Boolean(d)))].map((d) =>
+    d.replace(/-/g, ''),
+  );
   for (const dateParam of dates) {
     try {
       const res = await fetch(`${ESPN_PGA_URL}?dates=${dateParam}`, { next: { revalidate: 3600 } });
