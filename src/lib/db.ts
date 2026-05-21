@@ -1,8 +1,31 @@
-import { Pool } from '@neondatabase/serverless';
+import { Pool, type PoolClient } from '@neondatabase/serverless';
 
 const pool = new Pool({
   connectionString: process.env.DATABASE_URL,
 });
+
+/** INSERT/UPDATE/DELETE; rowCount is 0 for INSERT … ON CONFLICT DO NOTHING when skipped. */
+export async function executeWithRowCount(text: string, params?: unknown[]): Promise<number> {
+  const res = await pool.query(text, params);
+  return res.rowCount ?? 0;
+}
+
+export async function withTransaction<T>(fn: (client: PoolClient) => Promise<T>): Promise<T> {
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+    try {
+      const out = await fn(client);
+      await client.query('COMMIT');
+      return out;
+    } catch (e) {
+      await client.query('ROLLBACK');
+      throw e;
+    }
+  } finally {
+    client.release();
+  }
+}
 
 export async function query<T = Record<string, unknown>>(text: string, params?: unknown[]): Promise<T[]> {
   const res = await pool.query(text, params);
@@ -158,7 +181,10 @@ export async function initializeDb() {
     END $$`,
     // Indexes
     `CREATE INDEX IF NOT EXISTS idx_sessions_user ON sessions(user_id)`,
+    `CREATE INDEX IF NOT EXISTS idx_league_members_league ON league_members(league_id)`,
     `CREATE INDEX IF NOT EXISTS idx_picks_league ON picks(league_id)`,
+    `CREATE INDEX IF NOT EXISTS idx_picks_league_tournament ON picks(league_id, tournament_id)`,
+    `CREATE INDEX IF NOT EXISTS idx_picks_league_user ON picks(league_id, user_id)`,
     `CREATE INDEX IF NOT EXISTS idx_picks_user ON picks(user_id)`,
     `CREATE INDEX IF NOT EXISTS idx_messages_league ON league_messages(league_id)`,
     `CREATE INDEX IF NOT EXISTS idx_notifications_user ON notifications(user_id)`,
@@ -167,6 +193,7 @@ export async function initializeDb() {
     `ALTER TABLE tournament_results ADD COLUMN IF NOT EXISTS prize_updated_at TIMESTAMPTZ`,
     `CREATE INDEX IF NOT EXISTS idx_audit_log_league ON audit_log(league_id)`,
     `CREATE INDEX IF NOT EXISTS idx_badges_user ON badges(user_id, league_id)`,
+    `CREATE UNIQUE INDEX IF NOT EXISTS idx_picks_league_user_golfer_not_missed ON picks (league_id, user_id, golfer_id) WHERE COALESCE(is_missed, FALSE) = FALSE`,
   ];
 
   for (const sql of statements) {

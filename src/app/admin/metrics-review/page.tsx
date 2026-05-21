@@ -36,6 +36,7 @@ interface PlayerRow {
     missed: boolean;
     position: string | null;
     prizeMoney: number;
+    prizeSource: string | null;
     metricsConfirmed: boolean;
   }>;
 }
@@ -49,6 +50,26 @@ interface LeaguePayload {
 
 function formatMoney(n: number) {
   return n > 0 ? `$${n.toLocaleString()}` : "—";
+}
+
+/** Short label for `tournament_results.prize_source` in admin metrics cells. */
+function prizeSourceBadge(source: string | null) {
+  if (!source) return null;
+  const map: Record<string, string> = {
+    published_media: "Media",
+    tie_table: "Table",
+    manual: "Manual",
+    seed: "Seed",
+  };
+  const label = map[source] ?? source.replace(/_/g, " ");
+  return (
+    <span
+      className="inline-block mt-0.5 px-1.5 py-0 rounded bg-surface-alt border border-border text-[10px] uppercase tracking-wide text-muted"
+      title={source}
+    >
+      {label}
+    </span>
+  );
 }
 
 export default function AdminMetricsReviewPage() {
@@ -118,6 +139,9 @@ export default function AdminMetricsReviewPage() {
           <div className="ml-auto flex gap-3 text-sm">
             <Link href="/admin/results" className="text-green-200 hover:text-white">
               Results
+            </Link>
+            <Link href="/admin/event-pipeline" className="text-green-200 hover:text-white">
+              Pipeline
             </Link>
             <Link href="/admin/jobs" className="text-green-200 hover:text-white">
               Jobs
@@ -236,7 +260,10 @@ export default function AdminMetricsReviewPage() {
                                 <div className="text-muted">
                                   Finish: {ev.position ?? "—"}
                                 </div>
-                                <div>{formatMoney(ev.prizeMoney)}</div>
+                                <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5">
+                                  <span>{formatMoney(ev.prizeMoney)}</span>
+                                  {prizeSourceBadge(ev.prizeSource)}
+                                </div>
                                 <div className="mt-1">
                                   {ev.metricsConfirmed ? (
                                     <span className="text-success">✓ metrics</span>

@@ -5,6 +5,7 @@ import { query, queryOne } from './db';
 import { CHALLENGE_SEASON, CHALLENGE_TOURNAMENTS_START_ON_OR_AFTER } from './challenge-season';
 import { updateTournamentResult, updateTournamentStatus, getGolfers, getTournament, reconcilePickPayouts, recalculateTournamentResultPayoutsFromPurse, recalculateAllTournamentResultPayoutsFromPurses } from './picks';
 import { allocatePurseByFinishPositions, parsePosition, syncTournamentPursesFromSchedule } from './pga-schedule';
+import { PRIZE_SOURCE_PUBLISHED_MEDIA } from './prize-money-db';
 import { buildEspnGolferIdLookup, resolveGolferIdFromEspnDisplayName } from './golfer-name-lookup';
 import { recalculateBadges } from './badges';
 import { notifyLeagueMembers } from './notifications';
@@ -16,8 +17,9 @@ interface ESPNCompetitor {
   athlete: { displayName: string };
   status: { position: { displayName: string } };
   linescores?: { value: number }[];
-  score?: { displayValue: string };
+  score?: { displayValue: string } | string;
   earnings?: number;
+  order?: number;
 }
 
 interface ESPNEvent {
@@ -86,6 +88,50 @@ export async function discoverESPNEventId(tournamentName: string, startDate?: st
   return null;
 }
 
+function competitorScoreDisplay(c: ESPNCompetitor): string {
+  if (typeof c.score === 'string') return c.score;
+  return c.score?.displayValue || '';
+}
+
+/** Normalize summary vs dated-scoreboard competitor shapes into one format. */
+function normalizeEspnCompetitors(raw: ESPNCompetitor[]): ESPNCompetitor[] {
+  if (raw.some((c) => c.status?.position?.displayName)) {
+    return raw
+      .filter((c) => c.athlete?.displayName)
+      .map((c) => ({
+        athlete: { displayName: c.athlete.displayName },
+        status: { position: { displayName: c.status?.position?.displayName || '' } },
+        score: { displayValue: competitorScoreDisplay(c) },
+        earnings: c.earnings,
+      }));
+  }
+
+  const sorted = [...raw]
+    .filter((c) => c.athlete?.displayName && c.order)
+    .sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
+
+  const normalized: ESPNCompetitor[] = [];
+  let i = 0;
+  while (i < sorted.length) {
+    const startOrder = sorted[i].order!;
+    const score = competitorScoreDisplay(sorted[i]);
+    let j = i + 1;
+    while (j < sorted.length && competitorScoreDisplay(sorted[j]) === score) j++;
+    const position = j - i > 1 ? `T${startOrder}` : String(startOrder);
+    for (let k = i; k < j; k++) {
+      normalized.push({
+        athlete: { displayName: sorted[k].athlete!.displayName },
+        status: { position: { displayName: position } },
+        score: { displayValue: competitorScoreDisplay(sorted[k]) },
+        earnings: sorted[k].earnings,
+        order: sorted[k].order,
+      });
+    }
+    i = j;
+  }
+  return normalized;
+}
+
 export async function fetchPGALeaderboard(): Promise<ESPNResponse | null> {
   try {
     const res = await fetch(ESPN_PGA_URL, { next: { revalidate: 300 } }); // cache 5 min
@@ -131,7 +177,32 @@ export async function fetchESPNEventSummary(eventId: string): Promise<{ competit
       }));
 
       if (competitors.length === 0) continue;
-      return { competitors, eventName: data.header?.name || '' };
+      return { competitors: normalizeEspnCompetitors(competitors), eventName: data.header?.name || '' };
+    } catch {
+      continue;
+    }
+  }
+  return null;
+}
+
+/** Fallback when ESPN summary returns empty/502: load final field from dated scoreboard. */
+async function fetchESPNEventScoreboard(
+  eventId: string,
+  startDate: string,
+  endDate?: string,
+): Promise<{ competitors: ESPNCompetitor[]; eventName: string } | null> {
+  const dates = [...new Set([startDate, endDate].filter(Boolean))].map((d) => d.replace(/-/g, ''));
+  for (const dateParam of dates) {
+    try {
+      const res = await fetch(`${ESPN_PGA_URL}?dates=${dateParam}`, { next: { revalidate: 3600 } });
+      if (!res.ok) continue;
+      const data = await res.json();
+      const event = (data.events || []).find((e: ESPNEvent) => String(e.id) === String(eventId));
+      if (!event) continue;
+      const competition = event.competitions?.[0];
+      const competitors: ESPNCompetitor[] = competition?.competitors || [];
+      if (competitors.length === 0) continue;
+      return { competitors: normalizeEspnCompetitors(competitors), eventName: event.name || '' };
     } catch {
       continue;
     }
@@ -183,7 +254,7 @@ export async function syncTournamentResults(tournamentId: string): Promise<{ upd
   }
 
   const matched: { golferId: string; position: string; score: string; name: string }[] = [];
-  for (const competitor of competition.competitors) {
+  for (const competitor of normalizeEspnCompetitors(competition.competitors)) {
     const name = competitor.athlete?.displayName;
     if (!name) continue;
     const golferId = resolveGolferIdFromEspnDisplayName(name, golferMap);
@@ -191,7 +262,7 @@ export async function syncTournamentResults(tournamentId: string): Promise<{ upd
     matched.push({
       golferId,
       position: competitor.status?.position?.displayName || '',
-      score: competitor.score?.displayValue || '',
+      score: competitorScoreDisplay(competitor),
       name,
     });
   }
@@ -488,13 +559,16 @@ export async function populateHistoricalTournament(
     return { populated: 0, skipped: 0, errors: [`No ESPN event ID for ${tournament.name} (tried discovery)`], auditWarnings: 0 };
   }
 
-  const summary = await fetchESPNEventSummary(eventId);
+  const summary =
+    (await fetchESPNEventSummary(eventId))
+    ?? (await fetchESPNEventScoreboard(eventId, tournament.start_date, tournament.end_date));
   if (!summary || summary.competitors.length === 0) {
     return { populated: 0, skipped: 0, errors: ['Could not fetch historical ESPN data'], auditWarnings: 0 };
   }
 
   const golfers = await getGolfers();
   const golferMap = buildEspnGolferIdLookup(golfers);
+  const golferNameById = new Map(golfers.map((g) => [g.id, g.name]));
 
   // Build leaderboard from ESPN (positions + scores); prize dollars follow in-repo
   // PGA Tour / Masters payout tables + tie rules, not ESPN's earnings field.
@@ -508,10 +582,10 @@ export async function populateHistoricalTournament(
     if (!golferId) { skipped++; continue; }
 
     matched.push({
-      name,
+      name: golferNameById.get(golferId) ?? name,
       golferId,
       position: competitor.status?.position?.displayName || '',
-      score: competitor.score?.displayValue || '',
+      score: competitorScoreDisplay(competitor),
     });
   }
 
@@ -559,14 +633,18 @@ export async function populateHistoricalTournament(
     if (!auditedNames.has(entry.name)) { skipped++; continue; }
 
     try {
-      const existing = await queryOne<{ id: string; prize_money: number }>(
-        `SELECT id, prize_money::int as prize_money FROM tournament_results
+      const existing = await queryOne<{ id: string; prize_money: number; prize_source: string | null }>(
+        `SELECT id, prize_money::int as prize_money, prize_source FROM tournament_results
          WHERE tournament_id = $1 AND golfer_id = $2`,
         [tournamentId, golferId]
       );
 
-      if (!force && existing && existing.prize_money > 0) {
-        // Keep the existing audit-approved value, don't overwrite
+      if (
+        !force
+        && existing
+        && (existing.prize_money > 0 || existing.prize_source === PRIZE_SOURCE_PUBLISHED_MEDIA)
+      ) {
+        // Keep existing purse-backed or transcribed-media payouts; don't overwrite from ESPN historical.
         continue;
       }
 

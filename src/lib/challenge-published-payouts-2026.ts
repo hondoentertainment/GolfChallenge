@@ -1,6 +1,11 @@
 /**
  * Published final prize money (USD, rounded to whole dollars) for 2026 PGA Challenge events.
  * Sources: Golf.com (Masters); Sports Illustrated (RBC Heritage, Truist); Golf News Net (Cadillac).
+ *
+ * PGA Championship: place-by-place purse ladder (no golfer names until media posts final tables).
+ * `CHALLENGE_PUBLISHED_PAYOUT_SOURCES['PGA Championship']` is the Golf Digest ladder; transcribe
+ * named payouts into `PGA_CHAMPIONSHIP_2026_PUBLISHED_USD` after a verified post-event article.
+ * In-app prize splits from the purse use `getPayoutTable('PGA Championship')` in `pga-schedule.ts` — do not duplicate that table here.
  */
 
 /** Map alternate spellings (media) → exact `golfers.name` in our DB. */
@@ -311,7 +316,10 @@ export const TRUIST_CHAMPIONSHIP_2026_PUBLISHED_USD: Record<string, number> = {
   'Tom Hoge': 40_200,
 };
 
-/** Published tables we can audit / apply (tournament `name` must match DB). */
+/**
+ * Published tables we can audit / apply (tournament `name` must match DB).
+ * PGA Championship is omitted until a named final-payout list exists; see `CHALLENGE_PUBLISHED_PAYOUT_SOURCES`.
+ */
 export const CHALLENGE_PUBLISHED_PAYOUT_BY_TOURNAMENT: Record<string, Record<string, number>> = {
   'Masters Tournament': MASTERS_2026_PUBLISHED_USD,
   'RBC Heritage': RBC_HERITAGE_2026_PUBLISHED_USD,
@@ -319,6 +327,10 @@ export const CHALLENGE_PUBLISHED_PAYOUT_BY_TOURNAMENT: Record<string, Record<str
   'Truist Championship': TRUIST_CHAMPIONSHIP_2026_PUBLISHED_USD,
 };
 
+/**
+ * Reference URLs for published payout journalism. PGA Championship: place ladder only (Golf Digest);
+ * per-golfer published-payout audit requires a post-event article with names — not added to `CHALLENGE_PUBLISHED_PAYOUT_BY_TOURNAMENT` until then.
+ */
 export const CHALLENGE_PUBLISHED_PAYOUT_SOURCES: Record<string, string> = {
   'Masters Tournament':
     'https://golf.com/news/2026-masters-money-how-much-every-player-made/',
@@ -328,4 +340,6 @@ export const CHALLENGE_PUBLISHED_PAYOUT_SOURCES: Record<string, string> = {
     'https://thegolfnewsnet.com/golfnewsnetteam/2026/05/03/2026-cadillac-championship-final-results-prize-money-payout-pga-tour-leaderboard-and-how-much-each-golfer-won-142593/',
   'Truist Championship':
     'https://www.si.com/golf/2026-truist-championship-final-payouts-prize-money-winnings-from-quail-hollow',
+  'PGA Championship':
+    'https://www.golfdigest.com/story/pga-championship-2026-prize-money-payout-aronimink-purse-payday',
 };

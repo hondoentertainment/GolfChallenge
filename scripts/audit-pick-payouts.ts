@@ -16,11 +16,31 @@ async function main() {
   await initializeDb();
   const report = await auditAllPickValues();
 
-  console.log(JSON.stringify({ season: report.season, summary: report.summary }, null, 2));
+  console.log(
+    JSON.stringify(
+      {
+        season: report.season,
+        summary: report.summary,
+        payoutDriftsIgnoredForMedia: report.payoutDriftsIgnoredForMedia,
+        skippedPublishedTournaments: report.skippedPublishedTournaments,
+      },
+      null,
+      2,
+    ),
+  );
   console.log(`Completed tournaments with result rows: ${report.completedTournamentsWithResults}`);
+  if (report.payoutDriftsIgnoredForMedia > 0) {
+    console.log(
+      `\nNote: ${report.payoutDriftsIgnoredForMedia} tie-table drift row(s) ignored for tournaments with transcribed media payouts: ${report.skippedPublishedTournaments.join(', ') || '(see report)'}`,
+    );
+  }
 
   if (report.summary.ok) {
-    console.log('\nOK: participant payouts align with tie-table math; picks on past events have result data.');
+    const tail =
+      report.payoutDriftsIgnoredForMedia > 0
+        ? ` (${report.payoutDriftsIgnoredForMedia} row(s) skipped for media-table events; see skippedPublishedTournaments).`
+        : '.';
+    console.log(`\nOK: participant payouts align with checks; picks on past events have result data${tail}`);
     return;
   }
 

@@ -1,7 +1,8 @@
 import { verifyCronAuth } from '@/lib/cron-auth';
 import { NextRequest, NextResponse } from 'next/server';
-import { getCurrentTournament, getPickOrder, markMissedPicks } from '@/lib/picks';
+import { getCurrentTournament, getPickOrder, markMissedPicks, canUserPick } from '@/lib/picks';
 import { query, queryOne } from '@/lib/db';
+import { CHALLENGE_SEASON } from '@/lib/challenge-season';
 import { sendPickReminderEmail } from '@/lib/email';
 import { createNotification } from '@/lib/notifications';
 import { ensureSeeded } from '@/lib/seed';
@@ -16,18 +17,14 @@ export async function GET(req: NextRequest) {
     if (!tournament) return NextResponse.json({ message: 'No upcoming tournament' });
 
     // Get all leagues
-    const leagues = await query<{ id: string }>('SELECT id FROM leagues');
+    const leagues = await query<{ id: string }>('SELECT id FROM leagues WHERE archived = FALSE');
     let reminded = 0;
 
     for (const league of leagues) {
       const order = await getPickOrder(league.id, tournament.id);
       for (const entry of order) {
-        // Check if they already picked
-        const pick = await queryOne(
-          'SELECT id FROM picks WHERE league_id = $1 AND user_id = $2 AND tournament_id = $3',
-          [league.id, entry.userId, tournament.id]
-        );
-        if (pick) continue;
+        const { canPick } = await canUserPick(league.id, entry.userId, tournament.id);
+        if (!canPick) continue;
 
         // Get user email
         const user = await queryOne<{ email: string; username: string }>(
@@ -47,7 +44,7 @@ export async function GET(req: NextRequest) {
     }
 
     // Also mark any missed picks from previous tournaments
-    const tournaments = await query<{ id: string }>('SELECT id FROM tournaments WHERE end_date < $1 AND season = $2', [new Date().toISOString().split('T')[0], '2025-2026']);
+    const tournaments = await query<{ id: string }>('SELECT id FROM tournaments WHERE end_date < $1 AND season = $2', [new Date().toISOString().split('T')[0], CHALLENGE_SEASON]);
     let totalMissed = 0;
     for (const t of tournaments) {
       totalMissed += await markMissedPicks(t.id);

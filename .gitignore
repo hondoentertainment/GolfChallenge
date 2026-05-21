@@ -41,3 +41,8 @@ yarn-error.log*
 next-env.d.ts
 coverage/
 .env*.local
+
+# Machine-local script experiments (tracked placeholder only)
+/scripts/local/*
+!/scripts/local/.gitkeep
+!/scripts/local/README.md

@@ -1,4 +1,6 @@
-import { query, queryOne, execute } from './db';
+import { query, queryOne, execute, withTransaction, executeWithRowCount } from './db';
+import type { PoolClient } from '@neondatabase/serverless';
+import { cache } from 'react';
 import { v4 as uuidv4 } from 'uuid';
 import { CHALLENGE_SEASON, CHALLENGE_TOURNAMENTS_START_ON_OR_AFTER } from './challenge-season';
 import { getLeagueMembers } from './leagues';
@@ -31,6 +33,7 @@ export interface PickWithDetails extends Pick {
   prize_money: number;
   position: string | null;
   score: string | null;
+  prize_source: string | null;
 }
 
 export interface Tournament {
@@ -53,24 +56,26 @@ export interface Golfer {
   country: string;
 }
 
-export async function getTournaments(season = CHALLENGE_SEASON): Promise<Tournament[]> {
+export const getTournaments = cache(async function getTournaments(season = CHALLENGE_SEASON): Promise<Tournament[]> {
   return query<Tournament>(
     `SELECT * FROM tournaments WHERE season = $1 AND is_excluded = 0
      AND (start_date::date) >= $2::date
      ORDER BY start_date ASC`,
     [season, CHALLENGE_TOURNAMENTS_START_ON_OR_AFTER],
   );
-}
+});
 
 export async function getTournament(id: string): Promise<Tournament | null> {
   return queryOne<Tournament>('SELECT * FROM tournaments WHERE id = $1', [id]);
 }
 
-export async function getGolfers(): Promise<Golfer[]> {
+export const getGolfers = cache(async function getGolfers(): Promise<Golfer[]> {
   return query<Golfer>('SELECT * FROM golfers ORDER BY world_ranking ASC');
-}
+});
 
-export async function getCurrentTournament(season = CHALLENGE_SEASON): Promise<Tournament | null> {
+export const getCurrentTournament = cache(async function getCurrentTournament(
+  season = CHALLENGE_SEASON,
+): Promise<Tournament | null> {
   const today = new Date().toISOString().split('T')[0];
 
   const active = await queryOne<Tournament>(
@@ -90,7 +95,7 @@ export async function getCurrentTournament(season = CHALLENGE_SEASON): Promise<T
   );
 
   return upcoming || null;
-}
+});
 
 export async function getPickOrder(leagueId: string, tournamentId: string): Promise<{ userId: string; username: string; position: number; deadline: Date }[]> {
   const members = await getLeagueMembers(leagueId);
@@ -114,36 +119,71 @@ export async function getPickOrder(leagueId: string, tournamentId: string): Prom
   }).sort((a, b) => a.position - b.position);
 }
 
-export async function canUserPick(leagueId: string, userId: string, tournamentId: string): Promise<{ canPick: boolean; reason: string; deadline?: Date }> {
-  const existingPick = await queryOne(
+type SqlPickScope = {
+  query: <T = Record<string, unknown>>(text: string, params?: unknown[]) => Promise<T[]>;
+  queryOne: <T = Record<string, unknown>>(text: string, params?: unknown[]) => Promise<T | null>;
+};
+
+function isUniqueViolation(err: unknown): boolean {
+  return typeof err === 'object' && err !== null && 'code' in err && (err as { code: string }).code === '23505';
+}
+
+function sqlFromPoolClient(client: PoolClient): SqlPickScope {
+  return {
+    async query<T>(text: string, params?: unknown[]) {
+      const r = await client.query(text, params);
+      return r.rows as T[];
+    },
+    async queryOne<T>(text: string, params?: unknown[]) {
+      const r = await client.query(text, params);
+      return (r.rows[0] as T) ?? null;
+    },
+  };
+}
+
+const defaultSql: SqlPickScope = { query, queryOne };
+
+type Eligibility =
+  | { ok: true; pickPosition: number; deadline: Date }
+  | { ok: false; reason: string; deadline?: Date };
+
+/** Turn order + deadline checks against `picks` rows visible on `sql` (use a transaction client after locking). */
+async function evaluatePickEligibility(
+  sql: SqlPickScope,
+  leagueId: string,
+  userId: string,
+  tournamentId: string,
+): Promise<Eligibility> {
+  const existingPick = await sql.queryOne<{ id: string }>(
     'SELECT id FROM picks WHERE league_id = $1 AND user_id = $2 AND tournament_id = $3',
-    [leagueId, userId, tournamentId]
+    [leagueId, userId, tournamentId],
   );
 
   if (existingPick) {
-    return { canPick: false, reason: 'You have already made your pick for this tournament' };
+    return { ok: false, reason: 'You have already made your pick for this tournament' };
   }
 
   const order = await getPickOrder(leagueId, tournamentId);
-  const userOrder = order.find(o => o.userId === userId);
+  const userOrder = order.find((o) => o.userId === userId);
 
   if (!userOrder) {
-    return { canPick: false, reason: 'You are not a member of this league' };
+    return { ok: false, reason: 'You are not a member of this league' };
   }
 
   const now = new Date();
 
+  const pickedRows = await sql.query<{ user_id: string }>(
+    'SELECT user_id FROM picks WHERE league_id = $1 AND tournament_id = $2',
+    [leagueId, tournamentId],
+  );
+  const pickedUserIds = new Set(pickedRows.map((r) => r.user_id));
+
   for (const picker of order) {
     if (picker.position >= userOrder.position) break;
 
-    const theirPick = await queryOne(
-      'SELECT id FROM picks WHERE league_id = $1 AND user_id = $2 AND tournament_id = $3',
-      [leagueId, picker.userId, tournamentId]
-    );
-
-    if (!theirPick && now < picker.deadline) {
+    if (!pickedUserIds.has(picker.userId) && now < picker.deadline) {
       return {
-        canPick: false,
+        ok: false,
         reason: `Waiting for ${picker.username} to pick (deadline: ${picker.deadline.toLocaleString('en-US', { timeZone: 'America/Los_Angeles' })})`,
         deadline: userOrder.deadline,
       };
@@ -151,64 +191,100 @@ export async function canUserPick(leagueId: string, userId: string, tournamentId
   }
 
   if (now > userOrder.deadline) {
-    return { canPick: false, reason: 'Your pick deadline has passed', deadline: userOrder.deadline };
+    return { ok: false, reason: 'Your pick deadline has passed', deadline: userOrder.deadline };
   }
 
-  return { canPick: true, reason: 'Ready to pick', deadline: userOrder.deadline };
+  return { ok: true, pickPosition: userOrder.position, deadline: userOrder.deadline };
 }
 
+export async function canUserPick(
+  leagueId: string,
+  userId: string,
+  tournamentId: string,
+): Promise<{ canPick: boolean; reason: string; deadline?: Date }> {
+  const e = await evaluatePickEligibility(defaultSql, leagueId, userId, tournamentId);
+  if (e.ok) return { canPick: true, reason: 'Ready to pick', deadline: e.deadline };
+  return { canPick: false, reason: e.reason, deadline: e.deadline };
+}
+
+/**
+ * Atomic pick: advisory lock per league+tournament, re-validates eligibility and golfer rules on the same connection, then INSERT.
+ * Safe against TOCTOU between a separate canUserPick check and insert.
+ */
 export async function makePick(leagueId: string, userId: string, tournamentId: string, golferId: string): Promise<Pick> {
-  const golferTaken = await queryOne<{ id: string; username: string }>(
-    'SELECT p.id, u.username FROM picks p JOIN users u ON p.user_id = u.id WHERE p.league_id = $1 AND p.tournament_id = $2 AND p.golfer_id = $3',
-    [leagueId, tournamentId, golferId]
-  );
+  const out = await withTransaction(async (client) => {
+    await client.query('SELECT pg_advisory_xact_lock(hashtext($1::text), hashtext($2::text))', [leagueId, tournamentId]);
+    const sql = sqlFromPoolClient(client);
 
-  if (golferTaken) {
-    throw new Error(`This golfer has already been picked by ${golferTaken.username}`);
-  }
+    const eligibility = await evaluatePickEligibility(sql, leagueId, userId, tournamentId);
+    if (!eligibility.ok) {
+      throw new Error(eligibility.reason);
+    }
+    const { pickPosition } = eligibility;
 
-  const alreadyUsed = await queryOne<{ id: string; tournament_name: string }>(
-    `SELECT p.id, t.name as tournament_name FROM picks p
-     JOIN tournaments t ON p.tournament_id = t.id
-     WHERE p.league_id = $1 AND p.user_id = $2 AND p.golfer_id = $3`,
-    [leagueId, userId, golferId]
-  );
+    const golferTaken = await sql.queryOne<{ id: string; username: string }>(
+      `SELECT p.id, u.username FROM picks p
+       JOIN users u ON p.user_id = u.id
+       WHERE p.league_id = $1 AND p.tournament_id = $2 AND p.golfer_id = $3 AND COALESCE(p.is_missed, FALSE) = FALSE`,
+      [leagueId, tournamentId, golferId],
+    );
 
-  if (alreadyUsed) {
-    throw new Error(`You already picked this golfer for ${alreadyUsed.tournament_name}. Each golfer can only be selected once per season.`);
-  }
+    if (golferTaken) {
+      throw new Error(`This golfer has already been picked by ${golferTaken.username}`);
+    }
 
-  const order = await getPickOrder(leagueId, tournamentId);
-  const userOrder = order.find(o => o.userId === userId);
-  const pickPosition = userOrder?.position ?? 0;
+    const alreadyUsed = await sql.queryOne<{ id: string; tournament_name: string }>(
+      `SELECT p.id, t.name as tournament_name FROM picks p
+       JOIN tournaments t ON p.tournament_id = t.id
+       WHERE p.league_id = $1 AND p.user_id = $2 AND p.golfer_id = $3 AND COALESCE(p.is_missed, FALSE) = FALSE`,
+      [leagueId, userId, golferId],
+    );
 
-  const id = uuidv4();
-  await execute(
-    'INSERT INTO picks (id, league_id, user_id, tournament_id, golfer_id, pick_order) VALUES ($1, $2, $3, $4, $5, $6)',
-    [id, leagueId, userId, tournamentId, golferId, pickPosition]
-  );
+    if (alreadyUsed) {
+      throw new Error(
+        `You already picked this golfer for ${alreadyUsed.tournament_name}. Each golfer can only be selected once per season.`,
+      );
+    }
+
+    const id = uuidv4();
+    try {
+      await client.query(
+        'INSERT INTO picks (id, league_id, user_id, tournament_id, golfer_id, pick_order) VALUES ($1, $2, $3, $4, $5, $6)',
+        [id, leagueId, userId, tournamentId, golferId, pickPosition],
+      );
+    } catch (e) {
+      if (isUniqueViolation(e)) {
+        throw new Error(
+          'That golfer was just picked, or your pick is already recorded. Refresh the page and try again.',
+        );
+      }
+      throw e;
+    }
+
+    return {
+      id,
+      league_id: leagueId,
+      user_id: userId,
+      tournament_id: tournamentId,
+      golfer_id: golferId,
+      picked_at: new Date().toISOString(),
+      pick_order: pickPosition,
+    };
+  });
 
   const golfer = await queryOne<{ name: string }>('SELECT name FROM golfers WHERE id = $1', [golferId]);
   const tournament = await queryOne<{ name: string }>('SELECT name FROM tournaments WHERE id = $1', [tournamentId]);
   await logAction('pick_made', `Picked ${golfer?.name} for ${tournament?.name}`, leagueId, userId);
 
-  return {
-    id,
-    league_id: leagueId,
-    user_id: userId,
-    tournament_id: tournamentId,
-    golfer_id: golferId,
-    picked_at: new Date().toISOString(),
-    pick_order: pickPosition,
-  };
+  return out;
 }
 
 export async function getUserUsedGolfers(leagueId: string, userId: string): Promise<string[]> {
   const rows = await query<{ golfer_id: string }>(
-    'SELECT golfer_id FROM picks WHERE league_id = $1 AND user_id = $2',
-    [leagueId, userId]
+    'SELECT golfer_id FROM picks WHERE league_id = $1 AND user_id = $2 AND COALESCE(is_missed, FALSE) = FALSE',
+    [leagueId, userId],
   );
-  return rows.map(r => r.golfer_id);
+  return rows.map((r) => r.golfer_id);
 }
 
 export async function getLeaguePicks(leagueId: string, tournamentId?: string): Promise<PickWithDetails[]> {
@@ -216,7 +292,8 @@ export async function getLeaguePicks(leagueId: string, tournamentId?: string): P
     SELECT p.*, u.username, g.name as golfer_name, t.name as tournament_name,
       COALESCE(tr.prize_money, 0)::int as prize_money,
       tr.position,
-      tr.score
+      tr.score,
+      tr.prize_source
     FROM picks p
     JOIN users u ON p.user_id = u.id
     JOIN golfers g ON p.golfer_id = g.id
@@ -239,31 +316,45 @@ export async function getLeaguePicks(leagueId: string, tournamentId?: string): P
 }
 
 export async function getLeagueStandings(leagueId: string): Promise<{ userId: string; username: string; totalPrizeMoney: number; pickCount: number }[]> {
-  const members = await getLeagueMembers(leagueId);
-
-  const results = await Promise.all(members.map(async member => {
-    const result = await queryOne<{ total_prize_money: string; pick_count: string }>(
-      `SELECT
-        COALESCE(SUM(tr.prize_money), 0) as total_prize_money,
-        COUNT(p.id) as pick_count
+  const rows = await query<{
+    user_id: string;
+    username: string;
+    total_prize_money: string;
+    pick_count: string;
+  }>(
+    `WITH members AS (
+      SELECT lm.user_id, u.username
+      FROM league_members lm
+      JOIN users u ON u.id = lm.user_id
+      WHERE lm.league_id = $1
+    ),
+    agg AS (
+      SELECT p.user_id,
+        COALESCE(SUM(tr.prize_money), 0) AS total_prize_money,
+        COUNT(p.id) AS pick_count
       FROM picks p
       JOIN tournaments t ON t.id = p.tournament_id
-        AND t.season = $3
-        AND (t.start_date::date) >= $4::date
+        AND t.season = $2
+        AND (t.start_date::date) >= $3::date
       LEFT JOIN tournament_results tr ON tr.tournament_id = p.tournament_id AND tr.golfer_id = p.golfer_id
-      WHERE p.league_id = $1 AND p.user_id = $2`,
-      [leagueId, member.user_id, CHALLENGE_SEASON, CHALLENGE_TOURNAMENTS_START_ON_OR_AFTER],
-    );
+      WHERE p.league_id = $1
+      GROUP BY p.user_id
+    )
+    SELECT m.user_id, m.username,
+      COALESCE(a.total_prize_money, 0)::text AS total_prize_money,
+      COALESCE(a.pick_count, 0)::text AS pick_count
+    FROM members m
+    LEFT JOIN agg a ON a.user_id = m.user_id
+    ORDER BY COALESCE(a.total_prize_money, 0) DESC`,
+    [leagueId, CHALLENGE_SEASON, CHALLENGE_TOURNAMENTS_START_ON_OR_AFTER],
+  );
 
-    return {
-      userId: member.user_id,
-      username: member.username,
-      totalPrizeMoney: Number(result?.total_prize_money ?? 0),
-      pickCount: Number(result?.pick_count ?? 0),
-    };
+  return rows.map((r) => ({
+    userId: r.user_id,
+    username: r.username,
+    totalPrizeMoney: Number(r.total_prize_money),
+    pickCount: Number(r.pick_count),
   }));
-
-  return results.sort((a, b) => b.totalPrizeMoney - a.totalPrizeMoney);
 }
 
 export async function updateTournamentResult(
@@ -312,18 +403,16 @@ export async function markMissedPicks(tournamentId: string): Promise<number> {
 
       // If their deadline has passed, mark as missed
       if (now > entry.deadline) {
-        // Use a special "missed" golfer placeholder -- insert with a null-safe pattern
-        // We insert a pick with is_missed=TRUE and a dummy golfer_id that won't match results
-        // Actually, we just need to record the miss -- no golfer_id needed
-        // Use the first available golfer as placeholder (won't earn anything without a result)
-        await execute(
+        const inserted = await executeWithRowCount(
           `INSERT INTO picks (id, league_id, user_id, tournament_id, golfer_id, pick_order, is_missed)
            VALUES ($1, $2, $3, $4, (SELECT id FROM golfers ORDER BY world_ranking DESC LIMIT 1), $5, TRUE)
            ON CONFLICT (league_id, user_id, tournament_id) DO NOTHING`,
-          [uuidv4(), league.id, entry.userId, tournamentId, entry.position]
+          [uuidv4(), league.id, entry.userId, tournamentId, entry.position],
         );
-        await logAction('pick_missed', `Missed deadline for tournament`, league.id, entry.userId);
-        missed++;
+        if (inserted > 0) {
+          await logAction('pick_missed', `Missed deadline for tournament`, league.id, entry.userId);
+          missed++;
+        }
       }
     }
   }
@@ -340,20 +429,59 @@ export async function getCombinedLeaderboard(userId: string): Promise<{ leagueId
     [userId]
   );
 
-  const results = [];
-  for (const league of leagues) {
-    const standings = await getLeagueStandings(league.league_id);
-    const myStanding = standings.find(s => s.userId === userId);
-    const rank = standings.findIndex(s => s.userId === userId) + 1;
-    results.push({
+  if (leagues.length === 0) return [];
+
+  const leagueIds = leagues.map((l) => l.league_id);
+
+  const rows = await query<{
+    league_id: string;
+    user_id: string;
+    total_prize_money: string;
+  }>(
+    `WITH members AS (
+      SELECT lm.league_id, lm.user_id
+      FROM league_members lm
+      WHERE lm.league_id = ANY($1::text[])
+    ),
+    agg AS (
+      SELECT p.league_id, p.user_id,
+        COALESCE(SUM(tr.prize_money), 0) AS total_prize_money
+      FROM picks p
+      JOIN tournaments t ON t.id = p.tournament_id
+        AND t.season = $2
+        AND (t.start_date::date) >= $3::date
+      LEFT JOIN tournament_results tr ON tr.tournament_id = p.tournament_id AND tr.golfer_id = p.golfer_id
+      WHERE p.league_id = ANY($1::text[])
+      GROUP BY p.league_id, p.user_id
+    )
+    SELECT m.league_id, m.user_id,
+      COALESCE(a.total_prize_money, 0)::text AS total_prize_money
+    FROM members m
+    LEFT JOIN agg a ON a.league_id = m.league_id AND a.user_id = m.user_id
+    ORDER BY m.league_id, COALESCE(a.total_prize_money, 0) DESC`,
+    [leagueIds, CHALLENGE_SEASON, CHALLENGE_TOURNAMENTS_START_ON_OR_AFTER],
+  );
+
+  const byLeague = new Map<string, { userId: string; totalPrizeMoney: number }[]>();
+  for (const r of rows) {
+    if (!byLeague.has(r.league_id)) byLeague.set(r.league_id, []);
+    byLeague.get(r.league_id)!.push({
+      userId: r.user_id,
+      totalPrizeMoney: Number(r.total_prize_money),
+    });
+  }
+
+  return leagues.map((league) => {
+    const standings = byLeague.get(league.league_id) ?? [];
+    const myStanding = standings.find((s) => s.userId === userId);
+    const rank = standings.findIndex((s) => s.userId === userId) + 1;
+    return {
       leagueId: league.league_id,
       leagueName: league.name,
       totalPrizeMoney: myStanding?.totalPrizeMoney || 0,
       rank,
-    });
-  }
-
-  return results;
+    };
+  });
 }
 
 // Reconcile payouts: for every pick in the current season, ensure a tournament_results
@@ -540,6 +668,9 @@ export async function ensurePayoutsReconciled(): Promise<void> {
   if (now - lastReconcileTime < RECONCILE_INTERVAL_MS) return;
   lastReconcileTime = now;
 
+  // Note: we only need a boolean “any orphans?”. A cheaper alternative to COUNT(*) is
+  // SELECT EXISTS (SELECT 1 FROM picks p … LIMIT 1), which can stop at the first match.
+  // COUNT(*) must consider every matching row; keep COUNT unless profiling shows it matters.
   const orphanCount = await queryOne<{ count: string }>(`
     SELECT COUNT(*) as count
     FROM picks p
@@ -581,6 +712,13 @@ export type PickValueAuditReport = {
   season: string;
   completedTournamentsWithResults: number;
   payoutDrifts: PayoutDriftAuditRow[];
+  /**
+   * Result rows that differ from purse tie-table math but were not flagged because
+   * the event has a transcribed media payout table (stored prizes follow published amounts).
+   */
+  payoutDriftsIgnoredForMedia: number;
+  /** Tournament names where tie-table drift was excluded for the above reason. */
+  skippedPublishedTournaments: string[];
   pickIssues: PickValueAuditIssue[];
   summary: {
     totalPastNonMissedPicks: number;
@@ -597,6 +735,8 @@ export type PickValueAuditReport = {
  */
 export async function auditAllPickValues(season = CHALLENGE_SEASON): Promise<PickValueAuditReport> {
   const payoutDrifts: PayoutDriftAuditRow[] = [];
+  let payoutDriftsIgnoredForMedia = 0;
+  const skippedPublishedTournaments = new Set<string>();
 
   const completedTournaments = await query<{ id: string; name: string; purse: number }>(
     `SELECT t.id, t.name, t.purse
@@ -609,6 +749,7 @@ export async function auditAllPickValues(season = CHALLENGE_SEASON): Promise<Pic
   );
 
   for (const t of completedTournaments) {
+    const skipTieTableDriftForMedia = hasPublishedPayoutTable(t.name);
     const rows = await query<{
       id: string;
       position: string;
@@ -630,15 +771,20 @@ export async function auditAllPickValues(season = CHALLENGE_SEASON): Promise<Pic
       const expected = alloc.get(r.id);
       if (expected === undefined) continue;
       if (r.prize_money !== expected) {
-        payoutDrifts.push({
-          tournamentId: t.id,
-          tournamentName: t.name,
-          resultId: r.id,
-          golferName: r.golfer_name,
-          position: r.position,
-          stored: r.prize_money,
-          expected,
-        });
+        if (skipTieTableDriftForMedia) {
+          payoutDriftsIgnoredForMedia++;
+          skippedPublishedTournaments.add(t.name);
+        } else {
+          payoutDrifts.push({
+            tournamentId: t.id,
+            tournamentName: t.name,
+            resultId: r.id,
+            golferName: r.golfer_name,
+            position: r.position,
+            stored: r.prize_money,
+            expected,
+          });
+        }
       }
     }
   }
@@ -701,6 +847,10 @@ export async function auditAllPickValues(season = CHALLENGE_SEASON): Promise<Pic
     season,
     completedTournamentsWithResults: completedTournaments.length,
     payoutDrifts,
+    payoutDriftsIgnoredForMedia,
+    skippedPublishedTournaments: [...skippedPublishedTournaments].sort((a, b) =>
+      a.localeCompare(b),
+    ),
     pickIssues,
     summary: {
       totalPastNonMissedPicks: picksAudit.length,

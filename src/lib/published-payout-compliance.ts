@@ -99,6 +99,71 @@ export function hasPublishedPayoutTable(tournamentName: string): boolean {
 }
 
 /**
+ * Compare stored results to the transcribed media table for one tournament (if we have one).
+ * Events without a published table return `applicable: false` and `ok: true`.
+ */
+export async function auditPublishedPayoutComplianceForTournament(
+  tournamentId: string,
+  toleranceUsd = 1,
+): Promise<{
+  applicable: boolean;
+  tournamentName: string;
+  ok: boolean;
+  mismatches: PublishedPayoutMismatch[];
+  missingInDb: PublishedPayoutMissingRow[];
+}> {
+  const t = await queryOne<{ id: string; name: string }>(
+    'SELECT id, name FROM tournaments WHERE id = $1',
+    [tournamentId],
+  );
+  if (!t) {
+    return { applicable: false, tournamentName: '', ok: true, mismatches: [], missingInDb: [] };
+  }
+  const published = CHALLENGE_PUBLISHED_PAYOUT_BY_TOURNAMENT[t.name];
+  if (!published) {
+    return { applicable: false, tournamentName: t.name, ok: true, mismatches: [], missingInDb: [] };
+  }
+
+  const mismatches: PublishedPayoutMismatch[] = [];
+  const missingInDb: PublishedPayoutMissingRow[] = [];
+
+  const results = await query<{ golfer_name: string; prize_money: number }>(
+    `SELECT g.name as golfer_name, tr.prize_money::int as prize_money
+     FROM tournament_results tr
+     JOIN golfers g ON g.id = tr.golfer_id
+     WHERE tr.tournament_id = $1`,
+    [t.id],
+  );
+  const byGolfer = new Map(results.map((r) => [r.golfer_name, r]));
+
+  for (const [pubLabel, pubAmt] of Object.entries(published)) {
+    const dbName = normalizePublishedGolferName(pubLabel);
+    const row = byGolfer.get(dbName);
+    if (!row) {
+      missingInDb.push({ tournament: t.name, golfer: dbName, published: pubAmt });
+      continue;
+    }
+    if (Math.abs(row.prize_money - pubAmt) > toleranceUsd) {
+      mismatches.push({
+        tournamentName: t.name,
+        golferName: dbName,
+        dbPrize: row.prize_money,
+        publishedPrize: pubAmt,
+        delta: row.prize_money - pubAmt,
+      });
+    }
+  }
+
+  return {
+    applicable: true,
+    tournamentName: t.name,
+    ok: mismatches.length === 0 && missingInDb.length === 0,
+    mismatches,
+    missingInDb,
+  };
+}
+
+/**
  * Set `prize_money` to published values for one event (only where a result row exists).
  */
 export async function applyPublishedPayoutComplianceForTournament(

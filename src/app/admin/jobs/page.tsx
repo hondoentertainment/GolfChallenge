@@ -73,6 +73,7 @@ export default function AdminJobsPage() {
           <div className="ml-auto flex gap-3 text-sm">
             <Link href="/admin/metrics-review" className="text-green-200 hover:text-white">Metrics</Link>
             <Link href="/admin/results" className="text-green-200 hover:text-white">Results</Link>
+            <Link href="/admin/event-pipeline" className="text-green-200 hover:text-white">Pipeline</Link>
             <span className="text-white font-medium">Jobs</span>
           </div>
         </div>

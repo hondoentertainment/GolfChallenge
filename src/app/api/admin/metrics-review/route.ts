@@ -123,6 +123,7 @@ export async function GET() {
               missed: false,
               position: null as string | null,
               prizeMoney: 0,
+              prizeSource: null as string | null,
               metricsConfirmed: false,
             };
           }
@@ -136,6 +137,7 @@ export async function GET() {
             missed: Boolean(pk.is_missed),
             position: pos,
             prizeMoney: pk.prize_money ?? 0,
+            prizeSource: pk.prize_source ?? null,
             metricsConfirmed,
           };
         });

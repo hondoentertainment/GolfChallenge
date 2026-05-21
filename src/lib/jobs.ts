@@ -4,6 +4,7 @@
 // the CRON_SECRET.
 
 import { execute, query, queryOne } from './db';
+import { CHALLENGE_SEASON } from './challenge-season';
 import {
   syncTournamentResults,
   finalizeRecentTournaments,
@@ -20,6 +21,7 @@ import {
   getLeagueStandings,
   getLeaguePicks,
   recalculateTournamentResultPayoutsFromPurse,
+  canUserPick,
 } from './picks';
 import { syncTournamentPursesFromSchedule } from './pga-schedule';
 import { sendPickReminderEmail, sendWeeklyRecapEmail } from './email';
@@ -98,11 +100,8 @@ async function pickRemindersJob(): Promise<JobResult> {
   for (const league of leagues) {
     const order = await getPickOrder(league.id, tournament.id);
     for (const entry of order) {
-      const pick = await queryOne(
-        'SELECT id FROM picks WHERE league_id = $1 AND user_id = $2 AND tournament_id = $3',
-        [league.id, entry.userId, tournament.id]
-      );
-      if (pick) continue;
+      const { canPick } = await canUserPick(league.id, entry.userId, tournament.id);
+      if (!canPick) continue;
 
       const user = await queryOne<{ email: string; username: string }>(
         'SELECT email, username FROM users WHERE id = $1', [entry.userId]
@@ -123,7 +122,7 @@ async function pickRemindersJob(): Promise<JobResult> {
 
   const past = await query<{ id: string }>(
     'SELECT id FROM tournaments WHERE end_date < $1 AND season = $2',
-    [new Date().toISOString().split('T')[0], '2025-2026']
+    [new Date().toISOString().split('T')[0], CHALLENGE_SEASON]
   );
   let totalMissed = 0;
   for (const t of past) totalMissed += await markMissedPicks(t.id);

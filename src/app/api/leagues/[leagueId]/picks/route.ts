@@ -60,11 +60,6 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ lea
       return NextResponse.json({ error: 'Tournament and golfer are required' }, { status: 400 });
     }
 
-    const availability = await canUserPick(leagueId, user.id, tournamentId);
-    if (!availability.canPick) {
-      return NextResponse.json({ error: availability.reason }, { status: 400 });
-    }
-
     const pick = await makePick(leagueId, user.id, tournamentId, golferId);
     return NextResponse.json({ pick });
   } catch (error) {

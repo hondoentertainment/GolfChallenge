@@ -11,6 +11,7 @@ type HealthPayload = {
     cron_secret_configured: boolean;
     cron_required_in_production: boolean;
     jwt_strong_secret_configured: boolean;
+    admin_email_configured: boolean;
     resend_configured: boolean;
   };
   warnings: string[];
@@ -45,6 +46,12 @@ export async function GET() {
   }
 
   const resendConfigured = Boolean(process.env.RESEND_API_KEY);
+  const adminEmailConfigured = Boolean(process.env.ADMIN_EMAIL);
+  if (isProduction && !adminEmailConfigured) {
+    warnings.push(
+      'ADMIN_EMAIL is not set — league auto-setup emails use ADMIN_EMAIL when a sender domain is unavailable.',
+    );
+  }
 
   const ok = databaseUrlConfigured && databaseReachable;
 
@@ -58,6 +65,7 @@ export async function GET() {
       cron_secret_configured: cronSecretConfigured,
       cron_required_in_production: isProduction,
       jwt_strong_secret_configured: jwtStrong,
+      admin_email_configured: adminEmailConfigured,
       resend_configured: resendConfigured,
     },
     warnings,

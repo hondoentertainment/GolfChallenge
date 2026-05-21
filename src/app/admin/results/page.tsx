@@ -154,10 +154,22 @@ export default function AdminResultsPage() {
       }
       setAuditResult(data);
       const s = data.summary;
+      const ignored = data.payoutDriftsIgnoredForMedia ?? 0;
+      const skipped = data.skippedPublishedTournaments ?? [];
+      const skippedPreview =
+        skipped.length === 0
+          ? "see report"
+          : skipped.length <= 3
+            ? skipped.join(", ")
+            : `${skipped.slice(0, 3).join(", ")} +${skipped.length - 3} more`;
+      const mediaNote =
+        ignored > 0
+          ? ` · tie-table drift ignored for ${ignored} media-table row(s) (${skippedPreview})`
+          : "";
       setMessage(
         `${s.ok ? "Picks audit: all checks passed." : "Picks audit: issues found — see details below."} ` +
           `${s.totalPastNonMissedPicks} past (non-missed) picks · ` +
-          `tie-table vs DB drift: ${s.resultRowsOutOfSyncWithTieTable} result row(s) · ` +
+          `tie-table vs DB drift: ${s.resultRowsOutOfSyncWithTieTable} result row(s)${mediaNote} · ` +
           `picks missing finish/prize row: ${s.picksMissingResultData} · ` +
           `picks with $0 but numeric place: ${s.picksZeroPrizeNumericFinish} · ` +
           `${data.completedTournamentsWithResults} completed tournament(s) had result rows.`,
@@ -317,6 +329,7 @@ export default function AdminResultsPage() {
           <div className="ml-auto flex gap-3 text-sm">
             <Link href="/admin/metrics-review" className="text-green-200 hover:text-white">Metrics</Link>
             <span className="text-white font-medium">Results</span>
+            <Link href="/admin/event-pipeline" className="text-green-200 hover:text-white">Pipeline</Link>
             <Link href="/admin/jobs" className="text-green-200 hover:text-white">Jobs</Link>
           </div>
         </div>

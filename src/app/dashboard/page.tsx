@@ -125,6 +125,7 @@ export default function DashboardPage() {
                 </button>
                 <div className="absolute right-0 top-full mt-1 bg-surface border border-border rounded-lg shadow-lg py-1 w-44 opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all z-50">
                   <Link href="/admin/results" className="block px-4 py-2 text-sm text-foreground hover:bg-surface-alt">Results</Link>
+                  <Link href="/admin/event-pipeline" className="block px-4 py-2 text-sm text-foreground hover:bg-surface-alt">Event pipeline</Link>
                   <Link href="/admin/jobs" className="block px-4 py-2 text-sm text-foreground hover:bg-surface-alt">Jobs</Link>
                   {user?.metrics_review_access && (
                     <Link href="/admin/metrics-review" className="block px-4 py-2 text-sm text-foreground hover:bg-surface-alt">Metrics review</Link>
